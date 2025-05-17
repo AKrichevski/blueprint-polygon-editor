@@ -1,3 +1,4 @@
+// src/features/editor/components/CanvasView.tsx
 import React, {
     useRef,
     useState,
@@ -23,7 +24,7 @@ interface CanvasViewProps {
     width: number;
     height: number;
 }
-const xxx = new Map()
+
 const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
     const { state, scale, mode, position, selectedPointIndex } = useEditor();
     const stageRef = useRef<Konva.Stage | null>(null);
@@ -93,61 +94,28 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         handleMouseLeave,
     ]);
 
-    // const yyy = useMemo(() => {
-    //     console.time("suka")
-    //     if (!state.entities || typeof state.entities !== 'object') return null;
-    //
-    //     for (const entityKey in state.entities) {
-    //         let entityId = ''
-    //         console.log("xxxx state.entities", entityKey);
-    //
-    //         for (const key2 in state.entities[entityKey]) {
-    //
-    //             if (key2 === "id") {
-    //
-    //                 entityId  = entityKey ;
-    //                 console.log("xxxx state.entities[entityKey] key2", entityKey, key2, entityId, state.entities[entityKey][key2]);
-    //                 console.log("xxxx entityId key3", entityId);
-    //             }
-    //
-    //             if (key2 === "shapes") {
-    //                 for (const shapeId in state.entities[entityKey][key2]) {
-    //                         const name = `${entityKey}-${key2}-${shapeId}`
-    //                         xxx.set(name, {
-    //                             entityType: state.entities[entityKey][key2][shapeId].entityType,
-    //                             points: state.entities[entityKey][key2][shapeId].points,
-    //                             shapeType: state.entities[entityKey][key2][shapeId].shapeType,
-    //                         })
-    //                 }
-    //             }
-    //
-    //         }
-    //     }
-    //     console.timeEnd("suka")
-    //     return true
-    // }, [state.entities]);
-
-
-    const renderedShapes = useMemo(() => {
+    // Render entities in separate layers, respecting visibility
+    const renderedEntities = useMemo(() => {
         if (!state.entities || typeof state.entities !== 'object') return null;
 
         return Object.entries(state.entities).map(([entityId, entity]) => {
+            // Skip rendering if the entity is not visible
+            if (!entity.visible) return null;
+
             if (!entity || !entity.shapes || typeof entity.shapes !== 'object') return null;
-            // console.log("ffff", xxx.get([entityId]["shapes"][entity.shapes.shapeId]));
-            // debugger
+
             return (
-                <ShapeRenderer
-                    key={entityId}
-                    shapes={entity.shapes}
-                    entityId={entityId}
-                    entityColor={entity.metaData?.fontColor || '#3357FF'}
-                    showMetrics={showShapeMetrics}
-                />
+                <Layer key={`entity-layer-${entityId}`}>
+                    <ShapeRenderer
+                        shapes={entity.shapes}
+                        entityId={entityId}
+                        entityColor={entity.metaData?.fontColor || '#3357FF'}
+                        showMetrics={showShapeMetrics}
+                    />
+                </Layer>
             );
         });
     }, [state.entities, showShapeMetrics]);
-
-    console.count('CanvasView');
 
     return (
         <div
@@ -155,13 +123,16 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
             style={{ width, height, position: 'relative' }}
         >
             <Stage ref={stageRef} {...stageProps}>
+                {/* Background layer - always visible */}
                 <Layer>
-                     {/*<GridRenderer width={width} height={height} />*/}
+                    <GridRenderer width={width} height={height} />
                     <BackgroundRenderer />
-                    {renderedShapes}
                 </Layer>
+
+                {/* Entity layers - one per entity */}
+                {renderedEntities}
             </Stage>
-            {/*{yyy}*/}
+
             <MetricsToggleButton
                 showMetrics={showShapeMetrics}
                 onToggle={toggleShapeMetrics}

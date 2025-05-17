@@ -80,7 +80,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
             movePointUpdatesRef.current++;
 
-            if (movePointUpdatesRef.current > 100) {
+            if (movePointUpdatesRef.current > 1000) {
                 console.warn('MOVE_POINT dispatch flood blocked.');
                 return;
             }

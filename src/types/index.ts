@@ -114,18 +114,13 @@ export interface EntityMetaData {
 export interface Entity {
     id: string;
     metaData: EntityMetaData;
-    shapes: Record<string, GeometricShape>; // Changed from polygons to shapes
+    shapes: Record<string, GeometricShape>;
+    visible: boolean;
 }
 
 // State types
 export interface EditorState {
     entities: Record<string, Entity>;
-    selectedEntityId: string | null;
-    selectedShapeId: string | null;  // Changed from selectedPolygonId
-    selectedPointIndex: number | null; // Still used for polygons, lines, etc.
-    scale: number;
-    position: Point;
-    mode: EditMode;
     svgBackground: string | null;
 }
 

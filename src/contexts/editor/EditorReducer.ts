@@ -26,6 +26,24 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 svgBackground: action.payload,
             };
 
+        case 'TOGGLE_ENTITY_VISIBILITY': {
+            const { entityId } = action.payload;
+            const entity = state.entities[entityId];
+
+            if (!entity) return state;
+
+            return {
+                ...state,
+                entities: {
+                    ...state.entities,
+                    [entityId]: {
+                        ...entity,
+                        visible: !entity.visible
+                    }
+                }
+            };
+        }
+
         case 'ADD_ENTITY': {
             const { id, name, description, color } = action.payload;
 
@@ -49,7 +67,6 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             return {
                 ...state,
                 entities: newEntities,
-                selectedEntityId: id,
             };
         }
 
@@ -65,9 +82,6 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             return {
                 ...state,
                 entities: remainingEntities,
-                selectedEntityId: state.selectedEntityId === action.payload ? null : state.selectedEntityId,
-                selectedShapeId: null,
-                selectedPointIndex: null,
             };
         }
 
@@ -99,7 +113,6 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     ...state.entities,
                     [entityId]: updatedEntity
                 },
-                selectedShapeId: shapeId,
             };
         }
 
@@ -121,8 +134,6 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                         shapes: remainingShapes
                     }
                 },
-                selectedShapeId: state.selectedShapeId === shapeId ? null : state.selectedShapeId,
-                selectedPointIndex: null,
             };
         }
 
@@ -244,7 +255,6 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return {
                     ...state,
                     entities: newEntities,
-                    selectedPointIndex: null,
                 };
             } else if (shape.shapeType === 'line') {
                 // Lines need at least 2 points
@@ -460,7 +470,6 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                         }
                     }
                 },
-                selectedShapeId: newShapeId
             };
         }
 

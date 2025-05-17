@@ -1,18 +1,25 @@
 // src/features/editor/components/EntityList.tsx
-import React, { useState } from 'react';
-import { useEditor } from "../../../contexts/editor";
+import React, {useState} from 'react';
+import {useEditor} from "../../../contexts/editor";
+import {RiArrowDownSLine, RiArrowUpSLine, RiEyeLine, RiEyeOffLine} from 'react-icons/ri';
+import type {Entity} from "../../../types";
 
 const EntityList: React.FC = () => {
-    const { state, dispatch, selectedEntityId, updateSelectedEntitiesIds } = useEditor();
+    const {state, dispatch, selectedEntityId, updateSelectedEntitiesIds} = useEditor();
     const [showAddEntityForm, setShowAddEntityForm] = useState(false);
     const [newEntityName, setNewEntityName] = useState('');
     const [newEntityDescription, setNewEntityDescription] = useState('');
     const [newEntityColor, setNewEntityColor] = useState('#3357FF');
     const [entityToDelete, setEntityToDelete] = useState<string | null>(null);
+    const [expandedPanel, setExpandedPanel] = useState(true);
 
-    // Handle entity selection
-    const handleSelectEntity = (entityId: string) => {
-        updateSelectedEntitiesIds({action: 'update-entity', entityId})
+    // Handle entity visibility toggle
+    const handleToggleVisibility = (e: React.MouseEvent, entityId: string) => {
+        e.stopPropagation(); // Prevent selection when clicking the eye icon
+        dispatch({
+            type: 'TOGGLE_ENTITY_VISIBILITY',
+            payload: {entityId}
+        });
     };
 
     // Handle add entity form submission
@@ -40,16 +47,10 @@ const EntityList: React.FC = () => {
         }
     };
 
-    // Handle entity deletion
-    const handleDeleteEntity = (entityId: string) => {
-        // First show confirmation
-        setEntityToDelete(entityId);
-    };
-
     // Confirm entity deletion
     const confirmDeleteEntity = () => {
         if (entityToDelete) {
-            dispatch({ type: 'DELETE_ENTITY', payload: entityToDelete });
+            dispatch({type: 'DELETE_ENTITY', payload: entityToDelete});
             setEntityToDelete(null);
         }
     };
@@ -66,33 +67,37 @@ const EntityList: React.FC = () => {
     }));
 
     // Get shape count for an entity with null checks
-    const getShapeCount = (entity: any) => {
+    const getShapeCount = (entity: Entity) => {
         if (!entity) return 0;
 
-        // Support both new format (shapes) and legacy format (polygons)
         if (entity.shapes && typeof entity.shapes === 'object') {
             return Object.keys(entity.shapes).length;
-        } else if (entity.polygons && typeof entity.polygons === 'object') {
-            return Object.keys(entity.polygons).length;
         }
 
         return 0;
     };
 
     return (
-        <div className="bg-white rounded-lg shadow p-4">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Entities</h2>
+        <div className="bg-white rounded-lg shadow p-3">
+            <div className="flex justify-between items-center mb-4" onClick={() => setExpandedPanel(prev => !prev)}>
+                <h2 className="text-lg font-semibold">Layers</h2>
                 <button
                     className="bg-blue-500 text-white px-3 py-1 rounded text-sm"
                     onClick={() => setShowAddEntityForm(true)}
                 >
                     Add Entity
                 </button>
+                <button className="text-gray-500 hover:text-gray-700">
+                    {expandedPanel ? (
+                        <RiArrowUpSLine className="w-5 h-5"/>
+                    ) : (
+                        <RiArrowDownSLine className="w-5 h-5"/>
+                    )}
+                </button>
             </div>
 
             {/* Entity list */}
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            {expandedPanel && (<div className="space-y-2 max-h-96 overflow-y-auto">
                 {entitiesList.length === 0 ? (
                     <p className="text-gray-500 text-sm italic">No entities yet. Create one to get started.</p>
                 ) : (
@@ -110,12 +115,12 @@ const EntityList: React.FC = () => {
                                         ? 'bg-blue-100 border-blue-300'
                                         : 'bg-gray-50 border-gray-200'
                                 }`}
-                                style={{ borderLeft: `4px solid ${entityColor}` }}
+                                style={{borderLeft: `4px solid ${entityColor}`}}
                             >
                                 <div className="flex justify-between items-start">
                                     <div
                                         className="flex-1 cursor-pointer"
-                                        onClick={() => handleSelectEntity(entity.id)}
+                                        onClick={() => updateSelectedEntitiesIds({entityId: entity.id})}
                                     >
                                         <h3 className="font-medium">{entityName}</h3>
                                         {entityDescription && (
@@ -125,18 +130,34 @@ const EntityList: React.FC = () => {
                                             {shapeCount} shape{shapeCount !== 1 ? 's' : ''}
                                         </p>
                                     </div>
-                                    <button
-                                        className="text-red-500 hover:text-red-700 text-sm"
-                                        onClick={() => handleDeleteEntity(entity.id)}
-                                    >
-                                        Delete
-                                    </button>
+                                    <div className="flex items-center space-x-2">
+                                        {/* Visibility toggle button */}
+                                        <button
+                                            className={`p-1 rounded hover:bg-gray-200 transition-colors ${
+                                                !entity.visible ? 'text-gray-400' : 'text-blue-600'
+                                            }`}
+                                            onClick={(e) => handleToggleVisibility(e, entity.id)}
+                                            title={entity.visible ? "Hide entity" : "Show entity"}
+                                        >
+                                            {entity.visible ? (
+                                                <RiEyeLine className="w-5 h-5"/>
+                                            ) : (
+                                                <RiEyeOffLine className="w-5 h-5"/>
+                                            )}
+                                        </button>
+                                        <button
+                                            className="text-red-500 hover:text-red-700 text-sm"
+                                            onClick={() => setEntityToDelete(entity.id)}
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         );
                     })
                 )}
-            </div>
+            </div>)}
 
             {/* Add entity form */}
             {showAddEntityForm && (

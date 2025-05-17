@@ -22,7 +22,9 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
 
         let entitiesData: Record<string, any>;
 
+        // Determine the format of the input data
         if (!parsedData.entities && !Array.isArray(parsedData)) {
+            // Check if this looks like direct entity objects at root level
             let looksLikeEntities = true;
             for (const key in parsedData) {
                 const val = parsedData[key];
@@ -37,8 +39,10 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
                 throw new Error('Invalid root structure: expected entity-like objects');
             }
         } else if (parsedData.entities && typeof parsedData.entities === 'object') {
+            // Modern format with entities property
             entitiesData = parsedData.entities;
         } else if (Array.isArray(parsedData)) {
+            // Array format, convert to object with entity IDs as keys
             entitiesData = {};
             for (let i = 0; i < parsedData.length; i++) {
                 const item = parsedData[i];
@@ -56,9 +60,11 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
 
         const validatedEntities: Record<string, Entity> = {};
 
+        // Process each entity
         for (const entityId in entitiesData) {
             const entityRaw = entitiesData[entityId];
 
+            // Extract or create metadata
             const metaData = entityRaw.metaData && typeof entityRaw.metaData === 'object'
                 ? entityRaw.metaData
                 : {
@@ -73,6 +79,7 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
                 fontColor: metaData.fontColor || '#3357FF',
             };
 
+            // Process shapes or polygons
             let shapesData: Record<string, any> = {};
 
             if (entityRaw.shapes && typeof entityRaw.shapes === 'object' && !Array.isArray(entityRaw.shapes)) {
@@ -113,6 +120,7 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
                     entityType: entityId,
                 };
             } else {
+                // Try to detect shapes from primitive properties
                 const center = entityRaw.center || (entityRaw.cx !== undefined && entityRaw.cy !== undefined
                     ? { x: entityRaw.cx, y: entityRaw.cy }
                     : null);
@@ -145,6 +153,7 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
                 }
             }
 
+            // Validate shapes
             const validatedShapes: Record<string, GeometricShape> = {};
             for (const shapeId in shapesData) {
                 const rawShape = shapesData[shapeId];
@@ -157,10 +166,13 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
                 }
             }
 
+            // Create the final entity with explicit visibility handling
             validatedEntities[entityId] = {
                 id: entityId,
                 metaData: validatedMetaData,
                 shapes: validatedShapes,
+                // IMPORTANT: Set visibility to true by default, unless explicitly false
+                visible: entityRaw.visible !== false
             };
         }
 
@@ -168,9 +180,11 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
             dispatch({ type: 'SET_ENTITIES', payload: validatedEntities });
         }
 
+        // Reset view
         updateScale("reset");
-        updatePosition(0,0)
+        updatePosition(0,0);
 
+        // Set background if any
         dispatch({
             type: 'SET_SVG_BACKGROUND',
             payload: parsedData.svgBackground ?? null,
@@ -187,7 +201,7 @@ export function processImportData(jsonData: string, dispatch: React.Dispatch<Edi
 
 
 /**
- * Create a JSON string for exporting data
+ * Create a JSON string for exporting data, including visibility
  */
 export function formatExportData(entities: Record<string, Entity>, svgBackground: string | null): string {
     // Count total shapes across all entities
@@ -204,19 +218,28 @@ export function formatExportData(entities: Record<string, Entity>, svgBackground
         });
     });
 
+    // Count visible/hidden entities
+    const visibleEntities = Object.values(entities).filter(entity => entity.visible).length;
+    const hiddenEntities = Object.values(entities).length - visibleEntities;
+
     const exportData = {
         entities,
         svgBackground,
         metadata: {
-            version: '2.0', // Updated version to indicate shape support
+            version: '2.1', // Updated version to indicate shape & visibility support
             exportDate: new Date().toISOString(),
             totalEntities: Object.keys(entities).length,
+            visibleEntities,
+            hiddenEntities,
             totalShapes,
             shapeTypeCounts: shapeTypeCount,
             schemaVersion: 'shapes-v1', // Indicates we're using the new shape format
             supportedShapeTypes: [
                 'point', 'line', 'arc', 'circle', 'ellipse',
                 'polygon', 'rectangle', 'text'
+            ],
+            supportedFeatures: [
+                'entity_visibility', 'shape_types', 'svg_background'
             ]
         }
     };

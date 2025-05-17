@@ -7,7 +7,17 @@ import {calculateLineLength, calculatePolygonArea, calculatePolygonPerimeter} fr
 
 const ShapePropertiesEditor: React.FC = () => {
     const { state, selectedEntityId, selectedShapeId, dispatch } = useEditor();
-    const [localProperties, setLocalProperties] = useState<any>({});
+    const [localProperties, setLocalProperties] = useState<any>({
+        subType: '',
+        style: {},
+        text: '',
+        radius: 0,
+        radiusX: 0,
+        radiusY: 0,
+        rotation: 0,
+        startAngle: 0,
+        endAngle: 0
+    });
 
     // Get selected entity and shape
     const selectedEntity = selectedEntityId ? state.entities[selectedEntityId] : null;
@@ -20,10 +30,29 @@ const ShapePropertiesEditor: React.FC = () => {
             setLocalProperties({
                 subType: selectedShape.subType || '',
                 style: selectedShape.style || {},
+                // Initialize all possible shape-specific properties with defaults
+                text: '',
+                radius: 0,
+                radiusX: 0,
+                radiusY: 0,
+                rotation: 0,
+                startAngle: 0,
+                endAngle: 0,
+                // Then override with actual shape properties
                 ...getShapeSpecificProperties(selectedShape)
             });
         } else {
-            setLocalProperties({});
+            setLocalProperties({
+                subType: '',
+                style: {},
+                text: '',
+                radius: 0,
+                radiusX: 0,
+                radiusY: 0,
+                rotation: 0,
+                startAngle: 0,
+                endAngle: 0
+            });
         }
     }, [selectedShape]);
 
@@ -59,7 +88,8 @@ const ShapePropertiesEditor: React.FC = () => {
                 }
                 break;
             default:
-                console.log("Unknown shape shape type", shape.shapeType);
+                // No shape-specific properties needed
+                break;
         }
 
         return props;
@@ -464,6 +494,5 @@ const ShapePropertiesEditor: React.FC = () => {
         </div>
     );
 };
-
 
 export default ShapePropertiesEditor;

@@ -18,7 +18,8 @@ export type EditorAction =
     | { type: 'BATCH_UPDATE_SHAPES'; payload: { entityId: string; shapes: Record<string, GeometricShape> } }
     | { type: 'DUPLICATE_SHAPE'; payload: { entityId: string; shapeId: string; offset?: Point } }
     | { type: 'UPDATE_ENTITY_METADATA'; payload: { entityId: string; metaData: Partial<EntityMetaData> } }
-    | { type: 'UPDATE_SHAPE_PROPERTIES'; payload: { entityId: string; shapeId: string; properties: Partial<GeometricShape> } };
+    | { type: 'UPDATE_SHAPE_PROPERTIES'; payload: { entityId: string; shapeId: string; properties: Partial<GeometricShape> } }
+    | { type: 'TOGGLE_ENTITY_VISIBILITY'; payload: { entityId: string } };
 
 // EditorState interface
 export interface EditorState {
@@ -53,10 +54,25 @@ export const MAX_SCALE = 20;
 export interface EditorContextType {
     state: EditorState;
     dispatch: React.Dispatch<EditorAction>;
-    saveToLocalStorage: () => boolean;
+    saveToLocalStorage: () => Promise<boolean>;
     exportData: () => string;
     importData: (jsonData: string) => boolean;
     isLoading: boolean;
+    scale: number;
+    mode: EditMode;
+    updateMode: (newMode: EditMode) => void;
+    updateScale: (action: string, scaleValue?: number, minZoom?: number, maxZoom?: number, step?: number) => void;
+    position: Point;
+    updatePosition: (x: number, y: number) => void;
+    selectedEntityId: string | null;
+    selectedShapeId: string | null;
+    selectedPointIndex: number | null;
+    updateSelectedEntitiesIds: (params: {
+        entityId?: string | null;
+        shapeId?: string | null;
+        pointIndex?: number | null;
+        action?: string;
+    }) => void;
 }
 
 // Local storage key

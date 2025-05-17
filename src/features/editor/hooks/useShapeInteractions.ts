@@ -115,7 +115,7 @@ export const useShapeInteractions = () => {
 
         // Count updates to detect potential infinite loops
         dragUpdateCountRef.current++;
-        if (dragUpdateCountRef.current > 100) {
+        if (dragUpdateCountRef.current > 1000) {
             console.warn('Too many drag updates in a single operation - stopping to prevent infinite loop');
             return;
         }

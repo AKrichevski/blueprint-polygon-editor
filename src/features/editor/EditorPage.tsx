@@ -1,3 +1,4 @@
+// src/features/editor/EditorPage.tsx
 import React, {
     useEffect,
     useState,
@@ -83,8 +84,6 @@ const EditorPage: React.FC = memo(() => {
             </div>
         );
     }
-
-    console.count("EditorPage");
 
     return (
         <div className={classNames.container.base}>
