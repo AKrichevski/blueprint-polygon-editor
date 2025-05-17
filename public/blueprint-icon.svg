@@ -1,0 +1,41 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <!-- Blueprint background -->
+    <rect x="10" y="10" width="80" height="80" fill="#e6f7ff" stroke="#0073cf" stroke-width="2" />
+
+    <!-- Grid lines -->
+    <g stroke="#a0c8e5" stroke-width="0.5">
+        <!-- Vertical grid lines -->
+        <line x1="20" y1="10" x2="20" y2="90" />
+        <line x1="30" y1="10" x2="30" y2="90" />
+        <line x1="40" y1="10" x2="40" y2="90" />
+        <line x1="50" y1="10" x2="50" y2="90" />
+        <line x1="60" y1="10" x2="60" y2="90" />
+        <line x1="70" y1="10" x2="70" y2="90" />
+        <line x1="80" y1="10" x2="80" y2="90" />
+
+        <!-- Horizontal grid lines -->
+        <line x1="10" y1="20" x2="90" y2="20" />
+        <line x1="10" y1="30" x2="90" y2="30" />
+        <line x1="10" y1="40" x2="90" y2="40" />
+        <line x1="10" y1="50" x2="90" y2="50" />
+        <line x1="10" y1="60" x2="90" y2="60" />
+        <line x1="10" y1="70" x2="90" y2="70" />
+        <line x1="10" y1="80" x2="90" y2="80" />
+    </g>
+
+    <!-- Polygon 1 -->
+    <polygon points="25,25 65,25 65,55 25,55" fill="rgba(255, 87, 51, 0.3)" stroke="#FF5733" stroke-width="2" />
+
+    <!-- Polygon 2 -->
+    <polygon points="70,30 85,45 75,65 55,60" fill="rgba(51, 87, 255, 0.3)" stroke="#3357FF" stroke-width="2" />
+
+    <!-- Control points on polygon vertices -->
+    <circle cx="25" cy="25" r="3" fill="white" stroke="#333" stroke-width="1" />
+    <circle cx="65" cy="25" r="3" fill="white" stroke="#333" stroke-width="1" />
+    <circle cx="65" cy="55" r="3" fill="white" stroke="#333" stroke-width="1" />
+    <circle cx="25" cy="55" r="3" fill="white" stroke="#333" stroke-width="1" />
+    <circle cx="70" cy="30" r="3" fill="white" stroke="#333" stroke-width="1" />
+    <circle cx="85" cy="45" r="3" fill="white" stroke="#333" stroke-width="1" />
+    <circle cx="75" cy="65" r="3" fill="white" stroke="#333" stroke-width="1" />
+    <circle cx="55" cy="60" r="3" fill="white" stroke="#333" stroke-width="1" />
+</svg>
