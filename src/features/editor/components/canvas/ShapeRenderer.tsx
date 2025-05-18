@@ -1,6 +1,7 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useCallback } from 'react';
 import { Group } from 'react-konva';
 import type {
+    BoundingBox,
     GeometricShape,
     PointShape,
     LineShape,
@@ -21,6 +22,7 @@ import {
     PolygonRenderer,
     TextRenderer,
 } from "./shapes";
+import { calculateViewportBounds, isBoxVisible } from '../../../../utils/geometryUtils';
 
 interface ShapeRendererProps {
     shapes: Record<string, GeometricShape>;
@@ -35,12 +37,50 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({
                                                          entityId,
                                                          showMetrics,
                                                      }) => {
-    const { selectedShapeId } = useEditor(); // Only selectedShapeId is needed
+    console.time("xxx ShapeRender run");
+    const {
+        selectedShapeId,
+        scale,
+        position,
+        getBoundingBox,
+        calculateShapeBoundingBox
+    } = useEditor();
+
+    // Calculate current viewport bounds in world coordinates
+    const viewport = useMemo(() => {
+        return calculateViewportBounds(
+            window.innerWidth,  // Using window dimensions as stage size
+            window.innerHeight,
+            position,
+            scale
+        );
+    }, [position, scale]);
+
+    // Check if a shape is visible in the viewport
+    const isShapeVisible = useCallback((shapeId: string, shape: GeometricShape): boolean => {
+        // Always render the selected shape
+        if (shapeId === selectedShapeId) return true;
+
+        // Get cached bounding box or calculate it
+        let bbox = getBoundingBox(shapeId);
+        if (!bbox) {
+            bbox = calculateShapeBoundingBox(shape);
+        }
+
+        // Check if bbox overlaps viewport (with margin)
+        const margin = 100 / scale; // 100px screen margin
+        return isBoxVisible(bbox, viewport, margin);
+    }, [viewport, scale, selectedShapeId, getBoundingBox, calculateShapeBoundingBox]);
 
     const elements = useMemo(() => {
         const items = [];
 
         for (const [shapeId, shape] of Object.entries(shapes)) {
+            // Skip rendering invisible shapes (unless selected)
+            if (!isShapeVisible(shapeId, shape)) {
+                continue;
+            }
+
             const isSelected = shapeId === selectedShapeId;
             const color = isSelected ? colors.state.selected : entityColor;
 
@@ -145,19 +185,19 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({
         }
 
         return items;
-    }, [shapes, entityId, entityColor, showMetrics, selectedShapeId]);
-
+    }, [shapes, entityId, entityColor, showMetrics, selectedShapeId, isShapeVisible]);
+    console.timeEnd("xxx ShapeRender run");
     return <Group>{elements}</Group>;
 };
 
-// Optional: use custom comparison if props are large or change often
-function areEqual(prev: ShapeRendererProps, next: ShapeRendererProps) {
+// Custom equality function for props comparison
+function arePropsEqual(prev: ShapeRendererProps, next: ShapeRendererProps) {
     return (
         prev.entityId === next.entityId &&
         prev.entityColor === next.entityColor &&
         prev.showMetrics === next.showMetrics &&
-        prev.shapes === next.shapes
+        prev.shapes === next.shapes  // Reference equality check for shapes object
     );
 }
 
-export default memo(ShapeRenderer, areEqual);
+export default memo(ShapeRenderer, arePropsEqual);

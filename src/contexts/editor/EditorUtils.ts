@@ -1,10 +1,28 @@
 // src/contexts/editor/EditorUtils.ts
-import type { Entity, Point, Polygon, EntityMetaData } from "../../types";
-import { POSITION_EPSILON } from "./EditorContextTypes";
+import type {Entity, Point, Polygon, EntityMetaData, BoundingBox} from "../../types"
+import {calculateBoundingBox} from "../../utils/geometryUtils.ts";
+import {POSITION_EPSILON} from "../../consts";
 
 // Constants for storage handling
 const MAX_STORAGE_ATTEMPTS = 3;
 const STORAGE_RETRY_DELAY = 100; // ms
+
+export const updateBoundingBoxCache = (entities) => {
+    const newBoundingBoxes = new Map<string, BoundingBox>();
+
+    for (const entityId in entities) {
+        const entity = entities[entityId];
+        const shapes = entity.shapes;
+
+        for (const shapeId in shapes) {
+            const shape = shapes[shapeId];
+            const bbox = calculateBoundingBox(shape);
+            newBoundingBoxes.set(shapeId, bbox);
+        }
+    }
+
+    return newBoundingBoxes;
+}
 
 /**
  * Try to safely save to localStorage with size reduction if needed

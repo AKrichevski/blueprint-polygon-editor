@@ -1,7 +1,7 @@
 // src/contexts/editor/EditorContextTypes.ts
-import type { Entity, Point, GeometricShape, EntityMetaData } from "../../types";
-import { EditMode } from "../../types";
+import type { Entity, Point, GeometricShape, EntityMetaData, BoundingBox } from "../../types";
 import React from "react";
+import {EditMode} from "../../consts";
 
 // Define action types
 export type EditorAction =
@@ -19,7 +19,8 @@ export type EditorAction =
     | { type: 'DUPLICATE_SHAPE'; payload: { entityId: string; shapeId: string; offset?: Point } }
     | { type: 'UPDATE_ENTITY_METADATA'; payload: { entityId: string; metaData: Partial<EntityMetaData> } }
     | { type: 'UPDATE_SHAPE_PROPERTIES'; payload: { entityId: string; shapeId: string; properties: Partial<GeometricShape> } }
-    | { type: 'TOGGLE_ENTITY_VISIBILITY'; payload: { entityId: string } };
+    | { type: 'TOGGLE_ENTITY_VISIBILITY'; payload: { entityId: string } }
+    | { type: 'UPDATE_LOOKUP_MAPS'; payload: { entityLookup: Map<string, Entity>; shapeLookup: Map<string, { entityId: string; shape: GeometricShape }> } };
 
 // EditorState interface
 export interface EditorState {
@@ -31,24 +32,19 @@ export interface EditorState {
     position: Point;
     mode: EditMode;
     svgBackground: string | null;
+    // New lookup maps for performance optimization
+    entityLookup: Map<string, Entity>;
+    shapeLookup: Map<string, {
+        entityId: string;
+        shape: GeometricShape;
+    }>;
+    // In Phase 2, we'll add:
+    // spatialIndex?: RBush<SpatialItem>;
 }
 
-// Initial state - ensure entities is always an empty object
-export const initialEditorState: EditorState = {
-    entities: {},  // Always initialize as empty object
-    selectedEntityId: null,
-    selectedShapeId: null,
-    selectedPointIndex: null,
-    scale: 1,
-    position: { x: 0, y: 0 },
-    mode: EditMode.SELECT,
-    svgBackground: null,
-};
 
-// Constants for state management
-export const POSITION_EPSILON = 0.01;
-export const MIN_SCALE = 0.05;
-export const MAX_SCALE = 20;
+
+
 
 // EditorContext interface
 export interface EditorContextType {
@@ -75,5 +71,4 @@ export interface EditorContextType {
     }) => void;
 }
 
-// Local storage key
-export const STORAGE_KEY = 'blueprint-polygon-editor-state';
+

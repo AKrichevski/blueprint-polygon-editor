@@ -1,7 +1,7 @@
 // src/hooks/useKeyboardShortcuts.ts
 import {useEffect, useCallback} from 'react';
-import {EditMode} from '../types';
 import {useEditor} from "../contexts/editor";
+import {EditMode} from "../consts";
 
 interface ShortcutConfig {
     key: string;
@@ -125,8 +125,6 @@ export function useKeyboardShortcuts() {
                     } else if (selectedShapeId) {
                         updateSelectedEntitiesIds({shapeId: selectedPointIndex})
                         // Then deselect polygon
-                    } else if (selectedEntityId) {
-                        updateSelectedEntitiesIds({action: 'update-entity', entityId: null})
                     }
                 },
             },

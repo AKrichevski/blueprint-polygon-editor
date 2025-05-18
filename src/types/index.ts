@@ -5,6 +5,14 @@ export interface Point {
     y: number;
 }
 
+// Bounding box interface
+export interface BoundingBox {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+}
+
 // Base shape interface
 export interface BaseShape {
     id: string;
@@ -124,16 +132,3 @@ export interface EditorState {
     svgBackground: string | null;
 }
 
-export enum EditMode {
-    SELECT = 'select',
-    ADD_POINT = 'add_point',
-    DELETE_POINT = 'delete_point',
-    ADD_SHAPE = 'add_shape', // Generic shape adding mode
-    ADD_POLYGON = 'add_polygon',
-    ADD_LINE = 'add_line',
-    ADD_CIRCLE = 'add_circle',
-    ADD_RECTANGLE = 'add_rectangle',
-    ADD_ARC = 'add_arc',
-    ADD_ELLIPSE = 'add_ellipse',
-    ADD_TEXT = 'add_text'
-}

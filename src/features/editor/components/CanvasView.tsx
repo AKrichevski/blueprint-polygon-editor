@@ -4,7 +4,7 @@ import React, {
     useState,
     useCallback,
     useMemo,
-    memo,
+    memo, JSX,
 } from 'react';
 import { Stage, Layer } from 'react-konva';
 import Konva from 'konva';
@@ -17,8 +17,8 @@ import {
 import ShapeRenderer from './canvas/ShapeRenderer';
 import MetricsToggleButton from './MetricsToggleButton';
 import { useCanvasEvents } from '../hooks';
-import { EditMode } from "../../../types";
 import { useEditor } from "../../../contexts/editor";
+import {EditMode} from "../../../consts";
 
 interface CanvasViewProps {
     width: number;
@@ -29,6 +29,11 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
     const { state, scale, mode, position, selectedPointIndex } = useEditor();
     const stageRef = useRef<Konva.Stage | null>(null);
     const [showShapeMetrics, setShowShapeMetrics] = useState(false);
+    const [newPolygonPoints, setNewPolygonPoints] = useState<{ x: number; y: number }[]>([]);
+
+    const THROTTLE_MS = 50;
+    const lastRenderTimeRef = useRef(0);
+    const cachedRenderedEntitiesRef = useRef<JSX.Element[] | null>(null);
 
     const {
         handleWheel,
@@ -39,12 +44,13 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         handleMouseLeave,
         stageToWorld,
         worldToStage
-    } = useCanvasEvents(stageRef, width, height, [], () => {});
+    } = useCanvasEvents(stageRef, width, height, newPolygonPoints, setNewPolygonPoints);
 
     const toggleShapeMetrics = useCallback(() => {
         setShowShapeMetrics(prev => !prev);
     }, []);
 
+    // Get cursor class based on mode and selection
     const getCursorClass = useMemo(() => {
         switch (mode) {
             case EditMode.SELECT:
@@ -66,6 +72,7 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         }
     }, [mode, selectedPointIndex]);
 
+    // Memoize stage props
     const stageProps = useMemo(() => ({
         width,
         height,
@@ -80,6 +87,9 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         onMouseUp: handleCanvasMouseUp,
         onClick: handleCanvasClick,
         onMouseLeave: handleMouseLeave,
+        // Add performance optimizations
+        imageSmoothingEnabled: true,
+        perfectDrawEnabled: false,
     }), [
         width,
         height,
@@ -94,17 +104,26 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         handleMouseLeave,
     ]);
 
-    // Render entities in separate layers, respecting visibility
     const renderedEntities = useMemo(() => {
+        const now = performance.now();
+
+        // Check if we're within throttle window
+        if (now - lastRenderTimeRef.current < THROTTLE_MS) {
+            return cachedRenderedEntitiesRef.current;
+        }
+
+        const result: JSX.Element[] = [];
+
         if (!state.entities || typeof state.entities !== 'object') return null;
 
-        return Object.entries(state.entities).map(([entityId, entity]) => {
-            // Skip rendering if the entity is not visible
-            if (!entity.visible) return null;
+        for (const entityId in state.entities) {
+            const entity = state.entities[entityId];
 
-            if (!entity || !entity.shapes || typeof entity.shapes !== 'object') return null;
+            if (!entity || !entity.visible || !entity.shapes || typeof entity.shapes !== 'object') {
+                continue;
+            }
 
-            return (
+            result.push(
                 <Layer key={`entity-layer-${entityId}`}>
                     <ShapeRenderer
                         shapes={entity.shapes}
@@ -114,8 +133,14 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
                     />
                 </Layer>
             );
-        });
+        }
+
+        lastRenderTimeRef.current = now;
+        cachedRenderedEntitiesRef.current = result.length ? result : null;
+
+        return cachedRenderedEntitiesRef.current;
     }, [state.entities, showShapeMetrics]);
+
 
     return (
         <div

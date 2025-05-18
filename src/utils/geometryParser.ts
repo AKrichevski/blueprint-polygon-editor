@@ -30,6 +30,12 @@ export function parseShape(rawShape: RawShape, entityId: string): GeometricShape
     try {
         // Extract the shape type from various possible fields
         let shapeType = rawShape.type || rawShape.shapeType || rawShape.geomType;
+            if (rawShape.points.length === 1) {
+                shapeType = 'point';
+            }
+            if (rawShape.points.length === 2) {
+                shapeType = 'line';
+            }
 
         // If no explicit type, try to infer from properties
         if (!shapeType) {

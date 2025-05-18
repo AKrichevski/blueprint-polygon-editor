@@ -1,19 +1,69 @@
-// src/contexts/editor/EditorReducer.ts
 import { v4 as uuidv4 } from 'uuid';
 import { updateNestedObject, validateCoordinates, roundCoordinates, arePointsEqual } from './EditorUtils';
-import type { EditorAction } from "./EditorContextTypes";
-import type {EditorState, GeometricShape, LineShape, PolygonShape} from "../../types";
+import type { EditorAction, EditorState } from "./EditorContextTypes";
+import type { Entity, GeometricShape, LineShape, PolygonShape } from "../../types";
+
+let lastRun = 0;
+let lastResult: { entityLookup: Map<string, Entity>; shapeLookup: Map<string, { entityId: string; shape: GeometricShape }> } | null = null;
+
+export function createLookupMaps(entities: Record<string, Entity>): typeof lastResult {
+    const now = performance.now();
+    const THROTTLE_MS = 50; // adjust this to your needs
+
+    if (lastResult && now - lastRun < THROTTLE_MS) {
+        return lastResult;
+    }
+
+    const entityLookup = new Map<string, Entity>();
+    const shapeLookup = new Map<string, { entityId: string; shape: GeometricShape }>();
+
+    for (const entityId in entities) {
+        const entity = entities[entityId];
+        entityLookup.set(entityId, entity);
+
+        const shapes = entity.shapes;
+        if (!shapes) continue;
+
+        for (const shapeId in shapes) {
+            shapeLookup.set(shapeId, {
+                entityId,
+                shape: shapes[shapeId],
+            });
+        }
+    }
+
+    lastRun = now;
+    lastResult = { entityLookup, shapeLookup };
+
+    return lastResult;
+}
 
 /**
  * Main reducer for editor state
  */
 export const editorReducer = (state: EditorState, action: EditorAction): EditorState => {
+    let updatedState: EditorState;
+
     switch (action.type) {
-        case 'SET_ENTITIES':
+        case 'UPDATE_LOOKUP_MAPS': {
             return {
                 ...state,
-                entities: action.payload,
+                entityLookup: action.payload.entityLookup,
+                shapeLookup: action.payload.shapeLookup
             };
+        }
+
+        case 'SET_ENTITIES': {
+            const newEntities = action.payload;
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
+            return {
+                ...state,
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
+            };
+        }
 
         case 'SET_SVG_BACKGROUND':
             // Skip if background hasn't changed
@@ -32,15 +82,22 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
 
             if (!entity) return state;
 
+            const newEntities = {
+                ...state.entities,
+                [entityId]: {
+                    ...entity,
+                    visible: !entity.visible
+                }
+            };
+
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
             return {
                 ...state,
-                entities: {
-                    ...state.entities,
-                    [entityId]: {
-                        ...entity,
-                        visible: !entity.visible
-                    }
-                }
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -56,6 +113,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     fontColor: color
                 },
                 shapes: {},  // Initialize with empty shapes object
+                visible: true, // Ensure visibility is set
             };
 
             // Create new entities object with the new entity added
@@ -64,9 +122,14 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 [id]: newEntity
             };
 
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
             return {
                 ...state,
                 entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -79,9 +142,14 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             // Use destructuring to create a new object without the deleted entity
             const { [action.payload]: deletedEntity, ...remainingEntities } = { ...state.entities };
 
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(remainingEntities);
+
             return {
                 ...state,
                 entities: remainingEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -107,12 +175,19 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 }
             };
 
+            const newEntities = {
+                ...state.entities,
+                [entityId]: updatedEntity
+            };
+
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
             return {
                 ...state,
-                entities: {
-                    ...state.entities,
-                    [entityId]: updatedEntity
-                },
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -125,15 +200,22 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             // Create a new shapes object without the deleted shape
             const { [shapeId]: deletedShape, ...remainingShapes } = { ...entity.shapes };
 
+            const newEntities = {
+                ...state.entities,
+                [entityId]: {
+                    ...entity,
+                    shapes: remainingShapes
+                }
+            };
+
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
             return {
                 ...state,
-                entities: {
-                    ...state.entities,
-                    [entityId]: {
-                        ...entity,
-                        shapes: remainingShapes
-                    }
-                },
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -177,9 +259,14 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     () => newPoints
                 );
 
+                // Update lookup maps
+                const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
                 return {
                     ...state,
-                    entities: newEntities
+                    entities: newEntities,
+                    entityLookup,
+                    shapeLookup
                 };
             } else if (shape.shapeType === 'line') {
                 const lineShape = shape as LineShape;
@@ -206,9 +293,14 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     () => newPoints
                 );
 
+                // Update lookup maps
+                const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
                 return {
                     ...state,
-                    entities: newEntities
+                    entities: newEntities,
+                    entityLookup,
+                    shapeLookup
                 };
             }
 
@@ -252,9 +344,14 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     () => newPoints
                 );
 
+                // Update lookup maps
+                const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
                 return {
                     ...state,
                     entities: newEntities,
+                    entityLookup,
+                    shapeLookup
                 };
             } else if (shape.shapeType === 'line') {
                 // Lines need at least 2 points
@@ -323,9 +420,14 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 () => newPoints
             );
 
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
             return {
                 ...state,
-                entities: newEntities
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -337,12 +439,19 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
+            const mergedEntities = {
+                ...state.entities,
+                ...newEntities
+            };
+
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(mergedEntities);
+
             return {
                 ...state,
-                entities: {
-                    ...state.entities,
-                    ...newEntities
-                }
+                entities: mergedEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -357,18 +466,25 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
-            return {
-                ...state,
-                entities: {
-                    ...state.entities,
-                    [entityId]: {
-                        ...entity,
-                        shapes: {
-                            ...entity.shapes,
-                            ...shapes
-                        }
+            const newEntities = {
+                ...state.entities,
+                [entityId]: {
+                    ...entity,
+                    shapes: {
+                        ...entity.shapes,
+                        ...shapes
                     }
                 }
+            };
+
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
+            return {
+                ...state,
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -458,18 +574,25 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     return state;
             }
 
+            const newEntities = {
+                ...state.entities,
+                [entityId]: {
+                    ...entity,
+                    shapes: {
+                        ...entity.shapes,
+                        [newShapeId]: newShape
+                    }
+                }
+            };
+
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
             return {
                 ...state,
-                entities: {
-                    ...state.entities,
-                    [entityId]: {
-                        ...entity,
-                        shapes: {
-                            ...entity.shapes,
-                            [newShapeId]: newShape
-                        }
-                    }
-                },
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -488,18 +611,25 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
-            return {
-                ...state,
-                entities: {
-                    ...state.entities,
-                    [entityId]: {
-                        ...entity,
-                        metaData: {
-                            ...entity.metaData,
-                            ...metaData
-                        }
+            const newEntities = {
+                ...state.entities,
+                [entityId]: {
+                    ...entity,
+                    metaData: {
+                        ...entity.metaData,
+                        ...metaData
                     }
                 }
+            };
+
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
+            return {
+                ...state,
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 
@@ -526,21 +656,28 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
-            return {
-                ...state,
-                entities: {
-                    ...state.entities,
-                    [entityId]: {
-                        ...entity,
-                        shapes: {
-                            ...entity.shapes,
-                            [shapeId]: {
-                                ...shape,
-                                ...properties
-                            }
+            const newEntities = {
+                ...state.entities,
+                [entityId]: {
+                    ...entity,
+                    shapes: {
+                        ...entity.shapes,
+                        [shapeId]: {
+                            ...shape,
+                            ...properties
                         }
                     }
                 }
+            };
+
+            // Update lookup maps
+            const { entityLookup, shapeLookup } = createLookupMaps(newEntities);
+
+            return {
+                ...state,
+                entities: newEntities,
+                entityLookup,
+                shapeLookup
             };
         }
 

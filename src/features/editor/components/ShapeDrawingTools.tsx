@@ -1,7 +1,7 @@
 // src/features/editor/components/ShapeDrawingTools.tsx
 import React, { useState } from 'react';
-import { EditMode } from '../../../types';
 import { useEditor } from "../../../contexts/editor";
+import {EditMode} from "../../../consts";
 
 const ShapeDrawingTools: React.FC = () => {
     const { state, mode, updateMode, selectedEntityId, selectedShapeId, dispatch } = useEditor();

@@ -10,10 +10,18 @@ import React, {
 } from 'react';
 import { editorReducer } from './EditorReducer';
 import { processImportData, formatExportData } from './EditorImportExport';
-import { initialEditorState, MAX_SCALE, MIN_SCALE, POSITION_EPSILON, STORAGE_KEY } from './EditorContextTypes.ts';
-import type { EditorAction, EditorContextType } from "./EditorContextTypes.ts";
-import { safeLocalStorageSave } from "./EditorUtils.ts";
-import { EditMode } from "../../types";
+import type {EditorAction, EditorContextType} from "./EditorContextTypes";
+import {safeLocalStorageSave, updateBoundingBoxCache} from "./EditorUtils";
+import {calculateBoundingBox} from "../../utils/geometryUtils.ts";
+import {
+    EditMode,
+    initialEditorState,
+    MAX_SCALE,
+    MIN_SCALE,
+    POSITION_EPSILON,
+    STORAGE_KEY
+} from "../../consts";
+import type {BoundingBox, GeometricShape} from "../../types";
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
@@ -28,21 +36,53 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(initialEditorState.selectedPointIndex);
     const [position, setPosition] = useState(initialEditorState.position);
 
+    // Bounding box cache for viewport culling and hit detection
+    const boundingBoxCache = useRef<Map<string, BoundingBox>>(new Map());
+
     const lastUpdateTimeRef = useRef(0);
     const autoSaveTimeoutRef = useRef<number | null>(null);
     const storageWarningShownRef = useRef(false);
     const isMovePointInProgressRef = useRef(false);
-    const movePointUpdatesRef = useRef(0);
+    const movePointUpdatesRef = useRef(0)
+
+    // Update bounding box cache when entities/shapes change
+    useEffect(() => {
+        boundingBoxCache.current = updateBoundingBoxCache(state.entities);
+    }, [state.entities]);
 
     const updateMode = useCallback((newMode: EditMode) => {
         if (newMode !== mode) setMode(newMode);
     }, [mode]);
 
     const updateSelectedEntitiesIds = useCallback(
-        ({ entityId, shapeId, pointIndex }) => {
-            if (selectedEntityId !== entityId) setSelectedEntityId(entityId);
-            if (selectedShapeId !== shapeId) setSelectedShapeId(shapeId);
-            if (selectedPointIndex !== pointIndex) setSelectedPointIndex(pointIndex);
+        ({ entityId, shapeId, pointIndex, action = "update" }) => {
+            if (action === "update-entity") {
+                if (selectedEntityId !== entityId) setSelectedEntityId(entityId);
+                if (entityId === null) {
+                    setSelectedShapeId(null);
+                    setSelectedPointIndex(null);
+                }
+                return;
+            }
+
+            if (entityId !== undefined && selectedEntityId !== entityId) {
+                setSelectedEntityId(entityId);
+                if (entityId === null) {
+                    setSelectedShapeId(null);
+                    setSelectedPointIndex(null);
+                }
+            }
+
+            if (shapeId !== undefined && selectedShapeId !== shapeId) {
+                setSelectedShapeId(shapeId);
+                if (shapeId === null) {
+                    setSelectedPointIndex(null);
+                }
+            }
+
+            if (pointIndex !== undefined && selectedPointIndex !== pointIndex) {
+                setSelectedPointIndex(pointIndex);
+            }
         },
         [selectedEntityId, selectedShapeId, selectedPointIndex]
     );
@@ -173,6 +213,16 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return ok;
     }, [updateScale, updatePosition]);
 
+    // Expose boundingBoxCache through context
+    const getBoundingBox = useCallback((shapeId: string): BoundingBox | undefined => {
+        return boundingBoxCache.current.get(shapeId);
+    }, []);
+
+    // Calculate bounding box for any shape on demand (useful for new shapes)
+    const calculateShapeBoundingBox = useCallback((shape: GeometricShape): BoundingBox => {
+        return calculateBoundingBox(shape);
+    }, []);
+
     const contextValue = useMemo(() => ({
         state,
         dispatch: throttledDispatch,
@@ -190,6 +240,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         selectedShapeId,
         selectedPointIndex,
         updateSelectedEntitiesIds,
+        getBoundingBox,
+        calculateShapeBoundingBox
     }), [
         state,
         throttledDispatch,
@@ -207,6 +259,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         selectedShapeId,
         selectedPointIndex,
         updateSelectedEntitiesIds,
+        getBoundingBox,
+        calculateShapeBoundingBox
     ]);
 
     return (

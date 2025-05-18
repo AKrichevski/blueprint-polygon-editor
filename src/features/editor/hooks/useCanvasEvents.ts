@@ -4,7 +4,8 @@ import {KonvaEventObject} from 'konva/lib/Node';
 import Konva from 'konva';
 import {useEditor} from "../../../contexts/editor";
 import type {Point} from "../../../types";
-import {EditMode} from "../../../types";
+import {viewportToWorld, worldToViewport} from "../../../utils/geometryUtils";
+import {EditMode} from "../../../consts";
 
 // Constants for smoother interactions
 const MIN_SCALE = 0.05;
@@ -24,22 +25,6 @@ export const useCanvasEvents = (
     const dragStartRef = useRef<{ x: number, y: number } | null>(null);
     const lastMousePositionRef = useRef<{ x: number, y: number } | null>(null);
     const lastUpdateTimeRef = useRef(0);
-
-    // Convert stage coords to world coords with high precision
-    const stageToWorld = useCallback((stageX: number, stageY: number): Point => {
-        return {
-            x: (stageX - position.x) / scale,
-            y: (stageY - position.y) / scale
-        };
-    }, [position, scale]);
-
-    // Convert world coords to stage coords with high precision
-    const worldToStage = useCallback((worldX: number, worldY: number): Point => {
-        return {
-            x: worldX * scale + position.x,
-            y: worldY * scale + position.y
-        };
-    }, [position, scale]);
 
     // Enhanced wheel handler for smooth zooming
     const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -61,7 +46,7 @@ export const useCanvasEvents = (
         if (!pointerPos) return;
 
         // Store precise mouse position in world coordinates before zoom
-        const mouseWorldPos = stageToWorld(pointerPos.x, pointerPos.y);
+        const mouseWorldPos = viewportToWorld(pointerPos.x, pointerPos.y, position, scale);
 
         // Calculate new scale - using deltaY for direction
         const delta = -e.evt.deltaY;
@@ -84,7 +69,7 @@ export const useCanvasEvents = (
 
         updateScale("other", newScale)
         updatePosition(x, y)
-    }, [stageRef, stageToWorld, scale, updateScale, updatePosition]);
+    }, [stageRef, position, scale, updateScale, updatePosition]);
 
     // Canvas drag handling without interfering with shape dragging
     const handleCanvasMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
@@ -115,7 +100,7 @@ export const useCanvasEvents = (
         dragStartRef.current = null;
     }, []);
 
-    // Enhanced canvas click
+    // Enhanced canvas click for better polygon creation
     const handleCanvasClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
         // Ignore clicks during drag
         if (isDragging || !stageRef.current) return;
@@ -130,7 +115,7 @@ export const useCanvasEvents = (
         // Only add points in ADD_POLYGON mode and when an entity is selected
         if (mode === EditMode.ADD_POLYGON && selectedEntityId) {
             // Get precise world coordinates
-            const worldPos = stageToWorld(clickPos.x, clickPos.y);
+            const worldPos = viewportToWorld(clickPos.x, clickPos.y, position, scale);
 
             // Add point with fixed precision to avoid floating point issues
             setNewPolygonPoints(prev => [
@@ -141,7 +126,7 @@ export const useCanvasEvents = (
                 }
             ]);
         }
-    }, [isDragging, stageRef, mode, selectedEntityId, stageToWorld, setNewPolygonPoints]);
+    }, [isDragging, stageRef, mode, selectedEntityId, position, scale, setNewPolygonPoints]);
 
     // Track mouse position for coordinate display
     const handleMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
@@ -168,20 +153,7 @@ export const useCanvasEvents = (
         handleMouseMove,
         handleMouseLeave,
         isDragging,
-        stageToWorld,
-        worldToStage
+        stageToWorld: (x: number, y: number) => viewportToWorld(x, y, position, scale),
+        worldToStage: (x: number, y: number) => worldToViewport(x, y, position, scale)
     };
 };
-
-// // Helper functions
-// export const roundCoordinates = (point: Point, precision = 2): Point => {
-//     const factor = Math.pow(10, precision);
-//     return {
-//         x: Math.round(point.x * factor) / factor,
-//         y: Math.round(point.y * factor) / factor
-//     };
-// };
-//
-// export const clampScale = (scale: number): number => {
-//     return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
-// };

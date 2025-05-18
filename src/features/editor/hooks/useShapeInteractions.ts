@@ -1,19 +1,27 @@
 // src/features/editor/hooks/useShapeInteractions.ts
-import {useCallback, useRef} from 'react';
-import {KonvaEventObject} from 'konva/lib/Node';
-import {useEditor} from '../../../contexts/editor';
-import type {Point} from "../../../types";
-import {EditMode} from "../../../types";
+import { useCallback, useRef } from 'react';
+import { KonvaEventObject } from 'konva/lib/Node';
+import { useEditor } from '../../../contexts/editor';
+import type { Point } from "../../../types";
 import Konva from "konva";
-
-// Constants to stabilize movements
-// const CLICK_TIMEOUT = 150;  // Timeout between clicks to prevent double processing
+import { isPointInShape, viewportToWorld } from '../../../utils/geometryUtils';
+import {EditMode} from "../../../consts";
 
 export const useShapeInteractions = () => {
-    const {state, dispatch, mode, selectedEntityId, selectedShapeId, selectedPointIndex, updateSelectedEntitiesIds} = useEditor();
+    const {
+        state,
+        dispatch,
+        mode,
+        selectedEntityId,
+        selectedShapeId,
+        selectedPointIndex,
+        updateSelectedEntitiesIds,
+        position,
+        scale,
+        getBoundingBox
+    } = useEditor();
 
     // Use refs to track interaction state without triggering renders
-    // const lastInteractionTimeRef = useRef(0);
     const isDraggingPointRef = useRef(false);
     const dragStartPositionRef = useRef<Point | null>(null);
     const dragUpdateCountRef = useRef(0);
@@ -25,12 +33,10 @@ export const useShapeInteractions = () => {
         shapeId: string,
         pointIndex: number
     ) => {
-        // Prevent processing the same click multiple times or clicking while dragging
-        // const now = Date.now();
-        // if (now - lastInteractionTimeRef.current < CLICK_TIMEOUT || isDraggingPointRef.current) {
-        //     return;
-        // }
-        // lastInteractionTimeRef.current = now;
+        // Prevent clicking while dragging
+        if (isDraggingPointRef.current) {
+            return;
+        }
 
         if (mode === EditMode.SELECT) {
             updateSelectedEntitiesIds({
@@ -39,9 +45,8 @@ export const useShapeInteractions = () => {
                 pointIndex
             });
         } else if (mode === EditMode.DELETE_POINT) {
-            // Ensure shape maintains minimum points before deletion
-            const entity = state.entities[entityId];
-            const shape = entity?.shapes[shapeId];
+            // Use lookup maps instead of deep traversal
+            const shape = state.shapeLookup.get(shapeId)?.shape;
 
             if (shape && 'points' in shape && Array.isArray(shape.points)) {
                 // Polygons need at least 3 points, lines need at least 2
@@ -55,7 +60,7 @@ export const useShapeInteractions = () => {
                 }
             }
         }
-    }, [mode, state.entities, updateSelectedEntitiesIds, dispatch]);
+    }, [mode, dispatch, updateSelectedEntitiesIds, state.shapeLookup]);
 
     // Handle point drag start
     const handlePointDragStart = useCallback((
@@ -72,8 +77,6 @@ export const useShapeInteractions = () => {
         // Store the initial position of the point in stage coordinates
         const shape = e.target;
         if (shape && shape.getStage()) {
-            // const stage = shape.getStage();
-
             // Get the initial absolute position
             const initialPos = shape.absolutePosition();
             dragStartPositionRef.current = {
@@ -174,12 +177,10 @@ export const useShapeInteractions = () => {
         pointIndex: number,
         e: Konva.KonvaEventObject<DragEvent>
     ) => {
-        // Reset dragging state after a brief delay to prevent click handlers from firing
-        // setTimeout(() => {
+        // Reset dragging state
         isDraggingPointRef.current = false;
         dragStartPositionRef.current = null;
         dragUpdateCountRef.current = 0;
-        // }, 50);
 
         // Get final position to ensure state is updated with the final position
         if (e.target && e.target.getStage()) {
@@ -224,13 +225,6 @@ export const useShapeInteractions = () => {
     ) => {
         if (mode !== EditMode.ADD_POINT) return;
 
-        // // Prevent clicking too rapidly
-        // const now = Date.now();
-        // if (now - lastInteractionTimeRef.current < CLICK_TIMEOUT) {
-        //     return;
-        // }
-        // lastInteractionTimeRef.current = now;
-
         const stage = e.target.getStage();
         if (!stage) return;
 
@@ -239,16 +233,7 @@ export const useShapeInteractions = () => {
         if (!stagePos) return;
 
         // Convert to world coordinates
-        const stageAttrs = stage.attrs;
-        const scaleX = stageAttrs.scaleX || 1;
-        const scaleY = stageAttrs.scaleY || 1;
-        const stageX = stageAttrs.x || 0;
-        const stageY = stageAttrs.y || 0;
-
-        const worldPos = {
-            x: (stagePos.x - stageX) / scaleX,
-            y: (stagePos.y - stageY) / scaleY,
-        };
+        const worldPos = viewportToWorld(stagePos.x, stagePos.y, position, scale);
 
         // Round to prevent floating point errors
         const roundedPos = {
@@ -271,26 +256,57 @@ export const useShapeInteractions = () => {
                 index: startPointIndex + 1,
             },
         });
-    }, [mode, dispatch]);
+    }, [mode, dispatch, position, scale]);
 
-    // Handle shape selection with debounce
+    // Handle shape selection with improved hit detection
     const handleShapeClick = useCallback((
         entityId: string,
         shapeId: string
     ) => {
-        // Prevent double clicks or clicks while dragging
-        // const now = Date.now();
-        // if (now - lastInteractionTimeRef.current < CLICK_TIMEOUT || isDraggingPointRef.current) {
-        //     return;
-        // }
-        // lastInteractionTimeRef.current = now;
+        // Prevent clicks while dragging
+        if (isDraggingPointRef.current) {
+            return;
+        }
 
-        // Use batch selection to improve performance
+        // Use O(1) lookup instead of traversal
         updateSelectedEntitiesIds({
             entityId,
             shapeId,
         });
     }, [updateSelectedEntitiesIds]);
+
+    // Optimized function to find a shape at a point using spatial index (for Phase 2)
+    const findShapeAtPoint = useCallback((x: number, y: number): { entityId: string, shapeId: string } | null => {
+        // Convert viewport coordinates to world coordinates
+        const worldPos = viewportToWorld(x, y, position, scale);
+
+        // Check each entity/shape - in phase 2 this will use spatial index
+        for (const [entityId, entity] of Object.entries(state.entities)) {
+            if (!entity.visible) continue;
+
+            for (const [shapeId, shape] of Object.entries(entity.shapes)) {
+                // Quick check with bounding box first
+                const bbox = getBoundingBox(shapeId);
+                if (!bbox) continue;
+
+                // Use precise hit detection if in bounding box
+                if (isPointInShape(shape, worldPos, 5 / scale)) {
+                    return { entityId, shapeId };
+                }
+            }
+        }
+
+        return null;
+    }, [state.entities, position, scale, getBoundingBox]);
+
+    // Hover state handlers (useful for phase 2)
+    const handleShapeHover = useCallback((entityId: string, shapeId: string) => {
+        // Will be used in phase 2 for hover effects
+    }, []);
+
+    const handleShapeUnhover = useCallback(() => {
+        // Will be used in phase 2 for hover effects
+    }, []);
 
     return {
         handlePointClick,
@@ -298,6 +314,9 @@ export const useShapeInteractions = () => {
         handlePointDrag,
         handlePointDragEnd,
         handleLineClick,
-        handleShapeClick
+        handleShapeClick,
+        findShapeAtPoint,
+        handleShapeHover,
+        handleShapeUnhover
     };
 };
