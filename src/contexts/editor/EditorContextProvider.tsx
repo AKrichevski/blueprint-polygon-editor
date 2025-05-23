@@ -1,3 +1,4 @@
+// src/contexts/editor/EditorContextProvider.tsx
 import React, {
     createContext,
     useReducer,
@@ -42,22 +43,38 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const lastUpdateTimeRef = useRef(0);
     const autoSaveTimeoutRef = useRef<number | null>(null);
     const storageWarningShownRef = useRef(false);
-    const isMovePointInProgressRef = useRef(false);
-    const movePointUpdatesRef = useRef(0)
+
+    // FIXED: Simplified move point tracking without excessive flooding protection
+    // const isMovePointInProgressRef = useRef(false);
+    const movePointUpdatesRef = useRef(0);
+    const lastMovePointTimeRef = useRef(0);
 
     // Update bounding box cache when entities/shapes change
     useEffect(() => {
+        // FIXED: Don't show timing warnings for normal operations
         boundingBoxCache.current = updateBoundingBoxCache(state.entities);
     }, [state.entities]);
 
     const updateMode = useCallback((newMode: EditMode) => {
-        if (newMode !== mode) setMode(newMode);
+        if (newMode !== mode) {
+            setMode(newMode);
+        }
     }, [mode]);
 
     const updateSelectedEntitiesIds = useCallback(
-        ({ entityId, shapeId, pointIndex, action = "update" }) => {
+        ({
+             entityId,
+             shapeId,
+             pointIndex,
+             action = "update"
+         }: {
+            entityId?: string;
+            shapeId?: string;
+            pointIndex?: number;
+            action?: string;
+        }) => {
             if (action === "update-entity") {
-                if (selectedEntityId !== entityId) setSelectedEntityId(entityId);
+                if (selectedEntityId !== entityId) setSelectedEntityId(entityId ?? null);
                 if (entityId === null) {
                     setSelectedShapeId(null);
                     setSelectedPointIndex(null);
@@ -66,7 +83,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
 
             if (entityId !== undefined && selectedEntityId !== entityId) {
-                setSelectedEntityId(entityId);
+                setSelectedEntityId(entityId ?? null);
                 if (entityId === null) {
                     setSelectedShapeId(null);
                     setSelectedPointIndex(null);
@@ -96,7 +113,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     }, [position.x, position.y]);
 
-    const updateScale = useCallback((action, scaleValue = 1, minZoom = 0.1, maxZoom = 10, step = 0.1) => {
+    const updateScale = useCallback(
+        (action: string, scaleValue: number = 1, minZoom: number = 0.1, maxZoom: number = 10, step: number = 0.1) => {
         let newScale = scale;
         if (action === "zoom-in" && scale < maxZoom) {
             newScale = Math.min(MAX_SCALE, scale + step);
@@ -107,50 +125,68 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } else {
             newScale = scaleValue;
         }
-        setScale(Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale)));
+
+        const finalScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+        if (Math.abs(finalScale - scale) > 0.001) {
+            setScale(finalScale);
+        }
     }, [scale]);
 
+    // FIXED: Simplified dispatch with basic flooding protection only for MOVE_POINT
     const throttledDispatch = useCallback((action: EditorAction) => {
         const now = performance.now();
 
+        // Special handling ONLY for MOVE_POINT to prevent excessive updates
         if (action.type === 'MOVE_POINT') {
-            if (!isMovePointInProgressRef.current) {
-                isMovePointInProgressRef.current = true;
-                movePointUpdatesRef.current = 0;
-            }
-            movePointUpdatesRef.current++;
-
-            if (movePointUpdatesRef.current > 1000) {
-                console.warn('MOVE_POINT dispatch flood blocked.');
+            // Basic throttling for move point operations
+            if (now - lastMovePointTimeRef.current < 16) { // ~60fps max
                 return;
             }
-        } else {
-            isMovePointInProgressRef.current = false;
-            movePointUpdatesRef.current = 0;
+            lastMovePointTimeRef.current = now;
+
+            movePointUpdatesRef.current++;
+            if (movePointUpdatesRef.current > 200) {
+                // Reset counter instead of blocking
+                movePointUpdatesRef.current = 0;
+            }
         }
 
         lastUpdateTimeRef.current = now;
         dispatch(action);
     }, []);
 
+    // Load from localStorage
     useEffect(() => {
         let isMounted = true;
-        const timeoutId = setTimeout(() => {
-            if (!isMounted) return;
 
+        const loadData = async () => {
             try {
                 const raw = localStorage.getItem(STORAGE_KEY);
-                if (!raw) return;
+
+                if (!raw) {
+                    if (isMounted) setIsLoading(false);
+                    return;
+                }
 
                 const parsed = JSON.parse(raw);
-                if (parsed.entities) dispatch({ type: 'SET_ENTITIES', payload: parsed.entities });
-                if (parsed.svgBackground) dispatch({ type: 'SET_SVG_BACKGROUND', payload: parsed.svgBackground });
+
+                if (parsed.entities && isMounted) {
+                    dispatch({ type: 'SET_ENTITIES', payload: parsed.entities });
+                }
+                if (parsed.svgBackground && isMounted) {
+                    dispatch({ type: 'SET_SVG_BACKGROUND', payload: parsed.svgBackground });
+                }
+
             } catch (e) {
                 console.error("Failed to restore from localStorage:", e);
             } finally {
-                if (isMounted) setIsLoading(false);
+                if (isMounted) {
+                    setIsLoading(false);
+                }
             }
-        }, 200);
+        };
+
+        const timeoutId = setTimeout(loadData, 100);
 
         return () => {
             isMounted = false;
@@ -158,6 +194,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
     }, []);
 
+    // Auto-save with debouncing
     useEffect(() => {
         if (isLoading) return;
 
@@ -171,6 +208,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 entities: state.entities,
                 svgBackground: state.svgBackground,
             };
+
             try {
                 const ok = await safeLocalStorageSave(STORAGE_KEY, toSave);
                 if (!ok && !storageWarningShownRef.current) {
@@ -218,11 +256,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return boundingBoxCache.current.get(shapeId);
     }, []);
 
-    // Calculate bounding box for any shape on demand (useful for new shapes)
+    // Calculate bounding box for any shape on demand
     const calculateShapeBoundingBox = useCallback((shape: GeometricShape): BoundingBox => {
         return calculateBoundingBox(shape);
     }, []);
 
+    // FIXED: Ensure context value stability
     const contextValue = useMemo(() => ({
         state,
         dispatch: throttledDispatch,

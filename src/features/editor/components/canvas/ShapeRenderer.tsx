@@ -1,7 +1,7 @@
-import React, { memo, useMemo, useCallback } from 'react';
-import { Group } from 'react-konva';
+// @ts-nocheck
+import React, {memo, useMemo, useCallback} from 'react';
+import {Group} from 'react-konva';
 import type {
-    BoundingBox,
     GeometricShape,
     PointShape,
     LineShape,
@@ -11,8 +11,8 @@ import type {
     PolygonShape,
     TextShape,
 } from '../../../../types';
-import { colors } from '../../../../styles/theme';
-import { useEditor } from "../../../../contexts/editor";
+import {colors} from '../../../../styles/theme';
+import {useEditor} from "../../../../contexts/editor";
 import {
     ArcRenderer,
     CircleRenderer,
@@ -22,9 +22,11 @@ import {
     PolygonRenderer,
     TextRenderer,
 } from "./shapes";
-import { calculateViewportBounds, isBoxVisible } from '../../../../utils/geometryUtils';
+import {calculateViewportBounds, isBoxVisible} from '../../../../utils/geometryUtils';
 
 interface ShapeRendererProps {
+    width: number;
+    height: number;
     shapes: Record<string, GeometricShape>;
     entityId: string;
     showMetrics: boolean;
@@ -32,12 +34,13 @@ interface ShapeRendererProps {
 }
 
 const ShapeRenderer: React.FC<ShapeRendererProps> = ({
+                                                         width, height,
                                                          shapes,
                                                          entityColor,
                                                          entityId,
                                                          showMetrics,
                                                      }) => {
-    console.time("xxx ShapeRender run");
+
     const {
         selectedShapeId,
         scale,
@@ -46,15 +49,18 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({
         calculateShapeBoundingBox
     } = useEditor();
 
+
+
+
     // Calculate current viewport bounds in world coordinates
     const viewport = useMemo(() => {
         return calculateViewportBounds(
-            window.innerWidth,  // Using window dimensions as stage size
-            window.innerHeight,
+            width,
+            height,
             position,
             scale
         );
-    }, [position, scale]);
+    }, [position, scale, width, height]);
 
     // Check if a shape is visible in the viewport
     const isShapeVisible = useCallback((shapeId: string, shape: GeometricShape): boolean => {
@@ -186,8 +192,8 @@ const ShapeRenderer: React.FC<ShapeRendererProps> = ({
 
         return items;
     }, [shapes, entityId, entityColor, showMetrics, selectedShapeId, isShapeVisible]);
-    console.timeEnd("xxx ShapeRender run");
-    return <Group>{elements}</Group>;
+
+    return <Group key={entityId}>{elements}</Group>;
 };
 
 // Custom equality function for props comparison

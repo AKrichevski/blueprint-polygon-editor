@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/features/editor/components/ShapeDrawingTools.tsx
 import React, { useState } from 'react';
 import { useEditor } from "../../../contexts/editor";

@@ -72,9 +72,9 @@ const KeyboardShortcutsHelp: React.FC = () => {
                                                     Alt
                                                 </span>
                                             )}
-                                            <span className="bg-gray-100 px-2 py-1 rounded text-sm">
-                                                {shortcut.key}
-                                            </span>
+                                            {/*<span className="bg-gray-100 px-2 py-1 rounded text-sm">*/}
+                                            {/*    {shortcut.key}*/}
+                                            {/*</span>*/}
                                         </div>
                                         <div className="flex-1 text-gray-700">
                                             {shortcut.description}

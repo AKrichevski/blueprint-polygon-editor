@@ -1,5 +1,5 @@
 // src/App.tsx
-import React from 'react';
+// import React from 'react';
 import EditorPage from './features/editor/EditorPage';
 import './styles/index.css';
 import {EditorProvider} from "./contexts/editor";

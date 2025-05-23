@@ -22,7 +22,7 @@ export type EditorAction =
     | { type: 'TOGGLE_ENTITY_VISIBILITY'; payload: { entityId: string } }
     | { type: 'UPDATE_LOOKUP_MAPS'; payload: { entityLookup: Map<string, Entity>; shapeLookup: Map<string, { entityId: string; shape: GeometricShape }> } };
 
-// EditorState interface
+// EditorState interface with performance optimizations
 export interface EditorState {
     entities: Record<string, Entity>;
     selectedEntityId: string | null;
@@ -32,21 +32,20 @@ export interface EditorState {
     position: Point;
     mode: EditMode;
     svgBackground: string | null;
-    // New lookup maps for performance optimization
+
+    // Performance optimization: lookup maps for O(1) access
     entityLookup: Map<string, Entity>;
     shapeLookup: Map<string, {
         entityId: string;
         shape: GeometricShape;
     }>;
-    // In Phase 2, we'll add:
-    // spatialIndex?: RBush<SpatialItem>;
+
+    // Future performance optimizations:
+    // spatialIndex?: RBush<SpatialItem>; // For spatial queries
+    // visibilityCache?: Map<string, boolean>; // For viewport culling
+    // changeTracker?: WeakMap<GeometricShape, number>; // For change detection
 }
 
-
-
-
-
-// EditorContext interface
 export interface EditorContextType {
     state: EditorState;
     dispatch: React.Dispatch<EditorAction>;
@@ -63,12 +62,40 @@ export interface EditorContextType {
     selectedEntityId: string | null;
     selectedShapeId: string | null;
     selectedPointIndex: number | null;
-    updateSelectedEntitiesIds: (params: {
-        entityId?: string | null;
-        shapeId?: string | null;
-        pointIndex?: number | null;
-        action?: string;
-    }) => void;
+    updateSelectedEntitiesIds: (params: { pointIndex?: number; shapeId?: string; entityId?: string }) => void;
+    getBoundingBox: (shapeId: string) => BoundingBox | undefined;
+    calculateShapeBoundingBox: (shape: GeometricShape) => BoundingBox;
 }
 
+// Performance monitoring types
+export interface PerformanceMetrics {
+    renderTime: number;
+    frameRate: number;
+    memoryUsage: number;
+    shapeCount: number;
+    visibleShapeCount: number;
+}
 
+// Viewport culling types
+export interface ViewportBounds {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+    scale: number;
+    center: Point;
+}
+
+// Cache types for performance
+export interface ShapeCache {
+    boundingBox: BoundingBox;
+    lastModified: number;
+    isVisible: boolean;
+}
+
+export interface EntityCache {
+    shapeCount: number;
+    totalBounds: BoundingBox;
+    lastModified: number;
+    isVisible: boolean;
+}

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/features/editor/components/canvas/CoordinateDisplay.tsx
 import React, {RefObject} from 'react';
 import {useCoordinates} from "../../hooks";

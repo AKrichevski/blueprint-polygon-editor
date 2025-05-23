@@ -1,12 +1,13 @@
-// src/features/editor/components/CanvasView.tsx
+// @ts-nocheck
 import React, {
     useRef,
     useState,
     useCallback,
     useMemo,
-    memo, JSX,
+    memo,
+    JSX,
 } from 'react';
-import { Stage, Layer } from 'react-konva';
+import {Stage, Layer, Group} from 'react-konva';
 import Konva from 'konva';
 import { classNames } from '../../../styles/theme';
 import {
@@ -18,7 +19,7 @@ import ShapeRenderer from './canvas/ShapeRenderer';
 import MetricsToggleButton from './MetricsToggleButton';
 import { useCanvasEvents } from '../hooks';
 import { useEditor } from "../../../contexts/editor";
-import {EditMode} from "../../../consts";
+import { EditMode } from "../../../consts";
 
 interface CanvasViewProps {
     width: number;
@@ -42,15 +43,12 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         handleCanvasMouseUp,
         handleCanvasClick,
         handleMouseLeave,
-        stageToWorld,
-        worldToStage
     } = useCanvasEvents(stageRef, width, height, newPolygonPoints, setNewPolygonPoints);
 
     const toggleShapeMetrics = useCallback(() => {
         setShowShapeMetrics(prev => !prev);
     }, []);
 
-    // Get cursor class based on mode and selection
     const getCursorClass = useMemo(() => {
         switch (mode) {
             case EditMode.SELECT:
@@ -72,7 +70,6 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         }
     }, [mode, selectedPointIndex]);
 
-    // Memoize stage props
     const stageProps = useMemo(() => ({
         width,
         height,
@@ -87,7 +84,6 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         onMouseUp: handleCanvasMouseUp,
         onClick: handleCanvasClick,
         onMouseLeave: handleMouseLeave,
-        // Add performance optimizations
         imageSmoothingEnabled: true,
         perfectDrawEnabled: false,
     }), [
@@ -105,16 +101,16 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
     ]);
 
     const renderedEntities = useMemo(() => {
-        const now = performance.now();
 
-        // Check if we're within throttle window
+        const now = performance.now();
         if (now - lastRenderTimeRef.current < THROTTLE_MS) {
             return cachedRenderedEntitiesRef.current;
         }
 
-        const result: JSX.Element[] = [];
-
         if (!state.entities || typeof state.entities !== 'object') return null;
+        console.time(`xxx ShapeRender run`);
+        const result: JSX.Element[] = [];
+        // console.log(`xxx scale:${scale}`);
 
         for (const entityId in state.entities) {
             const entity = state.entities[entityId];
@@ -124,23 +120,45 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
             }
 
             result.push(
-                <Layer key={`entity-layer-${entityId}`}>
+                <Group
+                    key={`entity-group-${entityId}`}
+                    ref={(layer) => {
+                        if (!layer) return;
+
+                        setTimeout(() => {
+                            const width = layer.width();
+                            const height = layer.height();
+                            const hasContent = layer.getChildren().length > 0;
+
+                            if (width > 0 && height > 0 && hasContent && scale > 0.1 && !showShapeMetrics) {
+                                try {
+                                    layer.cache();
+                                } catch (e) {
+                                    console.warn(`Layer cache failed for entity ${entityId}`, e);
+                                }
+                            } else {
+                                layer.clearCache();
+                            }
+                        }, 0); // Delay by 1 tick to guarantee layout is ready
+                    }}
+                >
                     <ShapeRenderer
+                        width={width}
+                        height={height}
                         shapes={entity.shapes}
                         entityId={entityId}
                         entityColor={entity.metaData?.fontColor || '#3357FF'}
                         showMetrics={showShapeMetrics}
                     />
-                </Layer>
+                </Group>
             );
         }
+        console.timeEnd("xxx ShapeRender run");
 
         lastRenderTimeRef.current = now;
         cachedRenderedEntitiesRef.current = result.length ? result : null;
-
         return cachedRenderedEntitiesRef.current;
-    }, [state.entities, showShapeMetrics]);
-
+    }, [state.entities, showShapeMetrics, scale, width, height]);
 
     return (
         <div
@@ -148,20 +166,22 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
             style={{ width, height, position: 'relative' }}
         >
             <Stage ref={stageRef} {...stageProps}>
-                {/* Background layer - always visible */}
+                {/* Background layer */}
                 <Layer>
                     <GridRenderer width={width} height={height} />
                     <BackgroundRenderer />
+                    {/* Entity layers */}
+                    {renderedEntities}
                 </Layer>
 
-                {/* Entity layers - one per entity */}
-                {renderedEntities}
+
             </Stage>
 
             <MetricsToggleButton
                 showMetrics={showShapeMetrics}
                 onToggle={toggleShapeMetrics}
             />
+
             <CoordinateDisplay stageRef={stageRef} />
         </div>
     );

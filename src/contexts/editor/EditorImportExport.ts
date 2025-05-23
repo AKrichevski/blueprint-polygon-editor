@@ -7,7 +7,12 @@ import React from "react";
 /**
  * Process JSON import data and return validated entities
  */
-export function processImportData(jsonData: string, dispatch: React.Dispatch<EditorAction>, updateScale, updatePosition): boolean {
+export function processImportData(
+    jsonData: string,
+    dispatch: React.Dispatch<EditorAction>,
+    updateScale: (action: string, scaleValue?: number, minZoom?: number, maxZoom?: number, step?: number) => void,
+    updatePosition: (x: number, y: number) => void
+): boolean {
     try {
         let parsedData: any;
         try {

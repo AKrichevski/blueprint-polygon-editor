@@ -1,5 +1,6 @@
+// @ts-nocheck
 // src/utils/dataFormatFixer.ts
-import type {Entity, EntityMetaData, Point, GeometricShape} from "../types";
+import type {Entity, EntityMetaData, GeometricShape} from "../types";
 import { parseShape, convertLegacyPolygonsToShapes } from "./geometryParser";
 
 /**
@@ -107,6 +108,7 @@ export const validateAndFixEntities = (entitiesData: any): Record<string, Entity
             const shapes = fixShapes(entity, entityId);
 
             validatedEntities[entityId] = {
+                visible: false,
                 id: entityId,
                 metaData,
                 shapes

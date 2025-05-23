@@ -50,7 +50,6 @@ const PolygonRenderer: React.FC<PolygonRendererProps> = ({
         [shape.style?.fillColor, color]
     );
 
-    // Memoize flat point array for Konva
     const flatPoints = useMemo(() => {
         const pts = shape.points;
         const arr: number[] = new Array(pts.length * 2);
@@ -99,7 +98,6 @@ const PolygonRenderer: React.FC<PolygonRendererProps> = ({
         handlePointDragEnd
     ]);
 
-    // Memoize transparent line segments for adding points
     const addPointLines = useMemo(() => {
         if (mode !== "add_point") return null;
 
@@ -112,13 +110,12 @@ const PolygonRenderer: React.FC<PolygonRendererProps> = ({
                     stroke="transparent"
                     strokeWidth={canvas.clickableLineWidth}
                     onClick={(e) => handleLineClick(entityId, shape.id, i, e)}
-                    perfectDrawEnabled={false} // Performance optimization
+                    perfectDrawEnabled={false}
                 />
             );
         });
     }, [mode, shape.points, shape.id, entityId, handleLineClick]);
 
-    // Render metrics only when needed
     const metrics = useMemo(() => {
         if (!showMetrics || !isSelected) return null;
         return <ShapeMetrics shape={shape} />;
@@ -136,28 +133,20 @@ const PolygonRenderer: React.FC<PolygonRendererProps> = ({
                 onClick={() => handleShapeClick(entityId, shapeId)}
                 listening={mode !== "add_polygon"}
                 hitStrokeWidth={8}
-                perfectDrawEnabled={false} // Performance optimization
-                // Store custom data for event handlers
+                perfectDrawEnabled={false}
                 attrs={{
                     entityId,
                     shapeId,
                     type: 'polygon'
                 }}
             />
-
-            {/* Control points */}
             {controlPoints}
-
-            {/* Transparent lines for adding points */}
             {addPointLines}
-
-            {/* Metrics display */}
             {metrics}
         </Group>
     );
 };
 
-// Custom comparison function
 function arePropsEqual(prevProps: PolygonRendererProps, nextProps: PolygonRendererProps) {
     return (
         prevProps.shape === nextProps.shape &&
