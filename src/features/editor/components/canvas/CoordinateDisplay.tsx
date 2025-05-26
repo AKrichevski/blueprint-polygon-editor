@@ -1,24 +1,20 @@
 // @ts-nocheck
-// src/features/editor/components/canvas/CoordinateDisplay.tsx
-import React, {RefObject} from 'react';
-import {useCoordinates} from "../../hooks";
-import Konva from "konva";
-import {useEditor} from "../../../../contexts/editor";
+import React from 'react';
 
 
 interface CoordinateDisplayProps {
-    stageRef: RefObject<Konva.Stage | null>;
+    pointerPos: {
+        x: number;
+        y: number;
+    };
 }
 
-const CoordinateDisplay: React.FC<CoordinateDisplayProps> = ({ stageRef }) => {
-    const { mousePosition } = useCoordinates(stageRef);
-    const { position } = useEditor();
+const CoordinateDisplay: React.FC<CoordinateDisplayProps> = ({ pointerPos }) => {
 
-    if (!mousePosition) return null;
-
+    if (!pointerPos) return null;
     return (
         <div className="top-10 left-2 bg-white bg-opacity-70 px-2 py-1 rounded text-xs absolute">
-            x: {position.x}, y: {position.y}
+            x: {pointerPos.x}, y: {pointerPos.y}
         </div>
     );
 };

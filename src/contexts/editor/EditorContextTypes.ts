@@ -40,6 +40,9 @@ export interface EditorState {
         shape: GeometricShape;
     }>;
 
+    // NEW: Bounding box cache for fast hit detection and culling
+    boundingBoxCache: Map<string, BoundingBox>;
+
     // Future performance optimizations:
     // spatialIndex?: RBush<SpatialItem>; // For spatial queries
     // visibilityCache?: Map<string, boolean>; // For viewport culling
@@ -65,6 +68,7 @@ export interface EditorContextType {
     updateSelectedEntitiesIds: (params: { pointIndex?: number; shapeId?: string; entityId?: string }) => void;
     getBoundingBox: (shapeId: string) => BoundingBox | undefined;
     calculateShapeBoundingBox: (shape: GeometricShape) => BoundingBox;
+    boundingBoxCache: Map<string, BoundingBox>;
 }
 
 // Performance monitoring types

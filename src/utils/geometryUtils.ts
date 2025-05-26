@@ -11,9 +11,6 @@ import type {
     PointShape
 } from "../types";
 
-/**
- * Represents a bounding box with min/max coordinates
- */
 export interface BoundingBox {
     minX: number;
     minY: number;
@@ -21,114 +18,152 @@ export interface BoundingBox {
     maxY: number;
 }
 
+// Cache for expensive calculations
+const boundingBoxCache = new WeakMap<GeometricShape, BoundingBox>();
+
 /**
- * Calculate the bounding box for any shape type
+ * Optimized bounding box calculation with caching
  */
 export function calculateBoundingBox(shape: GeometricShape): BoundingBox {
+    // Check cache first
+    const cached = boundingBoxCache.get(shape);
+    if (cached) return cached;
+
+    let result: BoundingBox;
+
     switch (shape.shapeType) {
         case 'polygon':
         case 'rectangle': {
             const polygonShape = shape as PolygonShape;
-            return calculatePolygonBoundingBox(polygonShape.points);
+            result = calculatePolygonBoundingBox(polygonShape.points);
+            break;
         }
 
         case 'line': {
             const lineShape = shape as LineShape;
-            return calculatePolygonBoundingBox(lineShape.points);
+            result = calculatePolygonBoundingBox(lineShape.points);
+            break;
         }
 
         case 'circle': {
             const circleShape = shape as CircleShape;
-            return {
+            result = {
                 minX: circleShape.center.x - circleShape.radius,
                 minY: circleShape.center.y - circleShape.radius,
                 maxX: circleShape.center.x + circleShape.radius,
                 maxY: circleShape.center.y + circleShape.radius
             };
+            break;
         }
 
         case 'ellipse': {
             const ellipseShape = shape as EllipseShape;
-            // For rotated ellipses, this is an approximation
-            // A more accurate version would account for rotation
-            return {
-                minX: ellipseShape.center.x - ellipseShape.radiusX,
-                minY: ellipseShape.center.y - ellipseShape.radiusY,
-                maxX: ellipseShape.center.x + ellipseShape.radiusX,
-                maxY: ellipseShape.center.y + ellipseShape.radiusY
-            };
+            // For rotated ellipses, calculate the actual bounding box
+            if (ellipseShape.rotation && ellipseShape.rotation !== 0) {
+                const angle = (ellipseShape.rotation * Math.PI) / 180;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                const rx = ellipseShape.radiusX;
+                const ry = ellipseShape.radiusY;
+
+                // Calculate rotated bounding box
+                const halfWidth = Math.sqrt(rx * rx * cos * cos + ry * ry * sin * sin);
+                const halfHeight = Math.sqrt(rx * rx * sin * sin + ry * ry * cos * cos);
+
+                result = {
+                    minX: ellipseShape.center.x - halfWidth,
+                    minY: ellipseShape.center.y - halfHeight,
+                    maxX: ellipseShape.center.x + halfWidth,
+                    maxY: ellipseShape.center.y + halfHeight
+                };
+            } else {
+                result = {
+                    minX: ellipseShape.center.x - ellipseShape.radiusX,
+                    minY: ellipseShape.center.y - ellipseShape.radiusY,
+                    maxX: ellipseShape.center.x + ellipseShape.radiusX,
+                    maxY: ellipseShape.center.y + ellipseShape.radiusY
+                };
+            }
+            break;
         }
 
         case 'arc': {
             const arcShape = shape as ArcShape;
-            // This is a simplification - for precise arc bounds,
-            // we would need to consider the start/end angles
-            return {
+            // Simplified - for precise bounds, consider the actual arc segment
+            result = {
                 minX: arcShape.center.x - arcShape.radius,
                 minY: arcShape.center.y - arcShape.radius,
                 maxX: arcShape.center.x + arcShape.radius,
                 maxY: arcShape.center.y + arcShape.radius
             };
+            break;
         }
 
         case 'text': {
             const textShape = shape as TextShape;
-            // For text, we use an estimated bounding box
-            // A more precise calculation would consider font metrics
-            const estimatedWidth = textShape.text.length * (textShape.style?.fontSize || 12) * 0.6;
-            const estimatedHeight = (textShape.style?.fontSize || 12) * 1.2;
+            const fontSize = textShape.style?.fontSize || 12;
+            const estimatedWidth = textShape.text.length * fontSize * 0.6;
+            const estimatedHeight = fontSize * 1.2;
 
-            return {
+            result = {
                 minX: textShape.position.x,
                 minY: textShape.position.y,
                 maxX: textShape.position.x + estimatedWidth,
                 maxY: textShape.position.y + estimatedHeight
             };
+            break;
         }
 
         case 'point': {
             const pointShape = shape as PointShape;
             const radius = pointShape.style?.radius || 3;
 
-            return {
+            result = {
                 minX: pointShape.point.x - radius,
                 minY: pointShape.point.y - radius,
                 maxX: pointShape.point.x + radius,
                 maxY: pointShape.point.y + radius
             };
+            break;
         }
 
         default:
             console.warn(`Unknown shape type: ${(shape as GeometricShape).shapeType}`);
-            return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+            result = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     }
+
+    // Cache the result
+    boundingBoxCache.set(shape, result);
+    return result;
 }
 
 /**
- * Calculate the bounding box for a set of points
+ * Optimized polygon bounding box calculation
  */
 export function calculatePolygonBoundingBox(points: Point[]): BoundingBox {
     if (!points || points.length === 0) {
         return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     }
 
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
+    // Use a single loop with direct property access
+    let minX = points[0].x;
+    let minY = points[0].y;
+    let maxX = points[0].x;
+    let maxY = points[0].y;
 
-    for (const point of points) {
-        minX = Math.min(minX, point.x);
-        minY = Math.min(minY, point.y);
-        maxX = Math.max(maxX, point.x);
-        maxY = Math.max(maxY, point.y);
+    for (let i = 1; i < points.length; i++) {
+        const point = points[i];
+        if (point.x < minX) minX = point.x;
+        if (point.x > maxX) maxX = point.x;
+        if (point.y < minY) minY = point.y;
+        if (point.y > maxY) maxY = point.y;
     }
 
     return { minX, minY, maxX, maxY };
 }
 
 /**
- * Check if two bounding boxes intersect
+ * Optimized box intersection check
  */
 export function doBoxesIntersect(boxA: BoundingBox, boxB: BoundingBox): boolean {
     return !(
@@ -140,7 +175,7 @@ export function doBoxesIntersect(boxA: BoundingBox, boxB: BoundingBox): boolean 
 }
 
 /**
- * Check if a point is inside a bounding box
+ * Optimized point in box check
  */
 export function isPointInBox(point: Point, box: BoundingBox, tolerance = 0): boolean {
     return (
@@ -152,82 +187,80 @@ export function isPointInBox(point: Point, box: BoundingBox, tolerance = 0): boo
 }
 
 /**
- * Check if a bounding box is visible within the viewport
+ * Optimized visibility check
  */
 export function isBoxVisible(box: BoundingBox, viewport: BoundingBox, margin = 0): boolean {
     return !(
-        box.maxX < viewport.minX - margin ||
-        box.minX > viewport.maxX + margin ||
-        box.maxY < viewport.minY - margin ||
-        box.minY > viewport.maxY + margin
+        box.maxX + margin < viewport.minX ||
+        box.minX - margin > viewport.maxX ||
+        box.maxY + margin < viewport.minY ||
+        box.minY - margin > viewport.maxY
     );
 }
 
 /**
- * Check if a point is inside a polygon using ray casting algorithm
+ * Optimized point in polygon using ray casting algorithm
  */
 export function isPointInPolygon(point: Point, polygon: Point[]): boolean {
     if (polygon.length < 3) return false;
 
     let inside = false;
+    const px = point.x;
+    const py = point.y;
+
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
         const xi = polygon[i].x;
         const yi = polygon[i].y;
         const xj = polygon[j].x;
         const yj = polygon[j].y;
 
-        const intersect = ((yi > point.y) !== (yj > point.y)) &&
-            (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
-
-        if (intersect) inside = !inside;
+        // Use optimized comparison
+        if (((yi > py) !== (yj > py)) &&
+            (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+            inside = !inside;
+        }
     }
 
     return inside;
 }
 
 /**
- * Check if a point is near a line segment within a certain tolerance
+ * Optimized point near line check
  */
 export function isPointNearLine(point: Point, lineStart: Point, lineEnd: Point, tolerance: number): boolean {
     const dx = lineEnd.x - lineStart.x;
     const dy = lineEnd.y - lineStart.y;
-    const length = Math.sqrt(dx * dx + dy * dy);
+    const lengthSquared = dx * dx + dy * dy;
 
-    if (length === 0) return false;
+    if (lengthSquared === 0) return false;
 
-    // Calculate perpendicular distance from point to line
-    const distance = Math.abs((dy * point.x - dx * point.y + lineEnd.x * lineStart.y - lineEnd.y * lineStart.x) / length);
+    // Project point onto line
+    const t = Math.max(0, Math.min(1,
+        ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lengthSquared
+    ));
 
-    // Also check if the point is within the line segment bounds (not just near the infinite line)
-    // Project the point onto the line
-    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / (dx * dx + dy * dy);
+    // Find nearest point on line segment
+    const nearestX = lineStart.x + t * dx;
+    const nearestY = lineStart.y + t * dy;
 
-    if (t < 0 || t > 1) {
-        // Point's projection is outside the line segment
-        // Calculate distance to the closest endpoint
-        const distToStart = Math.sqrt(
-            Math.pow(point.x - lineStart.x, 2) + Math.pow(point.y - lineStart.y, 2)
-        );
-        const distToEnd = Math.sqrt(
-            Math.pow(point.x - lineEnd.x, 2) + Math.pow(point.y - lineEnd.y, 2)
-        );
-        return Math.min(distToStart, distToEnd) <= tolerance;
-    }
+    // Check distance
+    const distSquared = (point.x - nearestX) * (point.x - nearestX) +
+        (point.y - nearestY) * (point.y - nearestY);
 
-    return distance <= tolerance;
+    return distSquared <= tolerance * tolerance;
 }
 
 /**
- * Check if a point is within or near a shape for hit detection
+ * Optimized point in shape check with early exit
  */
 export function isPointInShape(shape: GeometricShape, point: Point, tolerance = 5): boolean {
-    // First, do a quick check with the bounding box
+    // Quick bounding box check first
     const bbox = calculateBoundingBox(shape);
     if (!isPointInBox(point, bbox, tolerance)) {
         return false;
     }
 
-    // If point is in bounding box, do more precise check based on shape type
+    // Shape-specific checks
     switch (shape.shapeType) {
         case 'polygon':
         case 'rectangle': {
@@ -239,6 +272,7 @@ export function isPointInShape(shape: GeometricShape, point: Point, tolerance = 
             const lineShape = shape as LineShape;
             if (lineShape.points.length < 2) return false;
 
+            // Optimized: check only consecutive pairs
             for (let i = 0; i < lineShape.points.length - 1; i++) {
                 if (isPointNearLine(point, lineShape.points[i], lineShape.points[i + 1], tolerance)) {
                     return true;
@@ -249,36 +283,51 @@ export function isPointInShape(shape: GeometricShape, point: Point, tolerance = 
 
         case 'circle': {
             const circleShape = shape as CircleShape;
-            const distance = Math.sqrt(
-                Math.pow(point.x - circleShape.center.x, 2) +
-                Math.pow(point.y - circleShape.center.y, 2)
-            );
-            return distance <= circleShape.radius + tolerance;
+            const dx = point.x - circleShape.center.x;
+            const dy = point.y - circleShape.center.y;
+            const distSquared = dx * dx + dy * dy;
+            const radiusWithTolerance = circleShape.radius + tolerance;
+            return distSquared <= radiusWithTolerance * radiusWithTolerance;
         }
 
         case 'ellipse': {
             const ellipseShape = shape as EllipseShape;
-            // Simplified check - not accounting for rotation
-            const normalizedX = (point.x - ellipseShape.center.x) / (ellipseShape.radiusX + tolerance);
-            const normalizedY = (point.y - ellipseShape.center.y) / (ellipseShape.radiusY + tolerance);
-            return normalizedX * normalizedX + normalizedY * normalizedY <= 1;
+            const rx = ellipseShape.radiusX + tolerance;
+            const ry = ellipseShape.radiusY + tolerance;
+
+            if (ellipseShape.rotation && ellipseShape.rotation !== 0) {
+                // Handle rotated ellipse
+                const angle = -(ellipseShape.rotation * Math.PI) / 180;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+
+                const dx = point.x - ellipseShape.center.x;
+                const dy = point.y - ellipseShape.center.y;
+
+                const x = dx * cos - dy * sin;
+                const y = dx * sin + dy * cos;
+
+                return (x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1;
+            } else {
+                const normalizedX = (point.x - ellipseShape.center.x) / rx;
+                const normalizedY = (point.y - ellipseShape.center.y) / ry;
+                return normalizedX * normalizedX + normalizedY * normalizedY <= 1;
+            }
         }
 
         case 'point': {
             const pointShape = shape as PointShape;
-            const distance = Math.sqrt(
-                Math.pow(point.x - pointShape.point.x, 2) +
-                Math.pow(point.y - pointShape.point.y, 2)
-            );
-            const hitRadius = pointShape.style?.radius || 3;
-            return distance <= hitRadius + tolerance;
+            const dx = point.x - pointShape.point.x;
+            const dy = point.y - pointShape.point.y;
+            const hitRadius = (pointShape.style?.radius || 3) + tolerance;
+            return dx * dx + dy * dy <= hitRadius * hitRadius;
         }
 
         case 'text': {
             const textShape = shape as TextShape;
-            // Simple rectangular hit area for text
-            const estimatedWidth = textShape.text.length * (textShape.style?.fontSize || 12) * 0.6;
-            const estimatedHeight = (textShape.style?.fontSize || 12) * 1.2;
+            const fontSize = textShape.style?.fontSize || 12;
+            const estimatedWidth = textShape.text.length * fontSize * 0.6;
+            const estimatedHeight = fontSize * 1.2;
 
             return (
                 point.x >= textShape.position.x - tolerance &&
@@ -290,35 +339,25 @@ export function isPointInShape(shape: GeometricShape, point: Point, tolerance = 
 
         case 'arc': {
             const arcShape = shape as ArcShape;
-            // First, check if within radius distance
-            const distance = Math.sqrt(
-                Math.pow(point.x - arcShape.center.x, 2) +
-                Math.pow(point.y - arcShape.center.y, 2)
-            );
+            const dx = point.x - arcShape.center.x;
+            const dy = point.y - arcShape.center.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (Math.abs(distance - arcShape.radius) > tolerance) {
                 return false;
             }
 
-            // Then check if point is within arc angle range
-            const angle = Math.atan2(
-                point.y - arcShape.center.y,
-                point.x - arcShape.center.x
-            ) * 180 / Math.PI;
+            // Check angle
+            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            if (angle < 0) angle += 360;
 
-            // Normalize angle to 0-360 range
-            const normalizedAngle = (angle < 0) ? angle + 360 : angle;
-
-            // Convert arc angles to 0-360 range
             const startAngle = (arcShape.startAngle % 360 + 360) % 360;
             const endAngle = (arcShape.endAngle % 360 + 360) % 360;
 
-            // Check if the point's angle is between start and end angles
             if (startAngle <= endAngle) {
-                return normalizedAngle >= startAngle && normalizedAngle <= endAngle;
+                return angle >= startAngle && angle <= endAngle;
             } else {
-                // Arc crosses 0 degrees
-                return normalizedAngle >= startAngle || normalizedAngle <= endAngle;
+                return angle >= startAngle || angle <= endAngle;
             }
         }
 
@@ -328,7 +367,7 @@ export function isPointInShape(shape: GeometricShape, point: Point, tolerance = 
 }
 
 /**
- * Convert viewport coordinates to world coordinates
+ * Optimized coordinate transformations
  */
 export function viewportToWorld(viewportX: number, viewportY: number, position: Point, scale: number): Point {
     return {
@@ -337,9 +376,6 @@ export function viewportToWorld(viewportX: number, viewportY: number, position: 
     };
 }
 
-/**
- * Convert world coordinates to viewport coordinates
- */
 export function worldToViewport(worldX: number, worldY: number, position: Point, scale: number): Point {
     return {
         x: worldX * scale + position.x,
@@ -347,19 +383,17 @@ export function worldToViewport(worldX: number, worldY: number, position: Point,
     };
 }
 
-/**
- * Calculate viewport bounds in world coordinates
- */
 export function calculateViewportBounds(
     width: number,
     height: number,
     position: Point,
     scale: number
 ): BoundingBox {
+    const invScale = 1 / scale;
     return {
-        minX: -position.x / scale,
-        minY: -position.y / scale,
-        maxX: (width - position.x) / scale,
-        maxY: (height - position.y) / scale
+        minX: -position.x * invScale,
+        minY: -position.y * invScale,
+        maxX: (width - position.x) * invScale,
+        maxY: (height - position.y) * invScale
     };
 }

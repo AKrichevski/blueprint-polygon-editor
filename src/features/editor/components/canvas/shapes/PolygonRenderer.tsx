@@ -122,7 +122,7 @@ const PolygonRenderer: React.FC<PolygonRendererProps> = ({
     }, [showMetrics, isSelected, shape]);
 
     return (
-        <Group>
+        <Group draggable={mode === "select" && isSelected}>
             {/* Polygon outline */}
             <Line
                 points={flatPoints}

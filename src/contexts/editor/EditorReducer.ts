@@ -2,74 +2,76 @@
 import { v4 as uuidv4 } from 'uuid';
 import { updateNestedObject, validateCoordinates, roundCoordinates, arePointsEqual } from './EditorUtils';
 import type { EditorAction, EditorState } from "./EditorContextTypes";
-import type {Entity, EntityMetaData, GeometricShape, LineShape, PolygonShape, PointShape} from "../../types";
+import type {Entity, EntityMetaData, GeometricShape, LineShape, PolygonShape, PointShape, BoundingBox} from "../../types";
+import { calculateBoundingBox } from "../../utils/geometryUtils";
 
-let lastRun = 0;
-let lastResult: { entityLookup: Map<string, Entity>; shapeLookup: Map<string, { entityId: string; shape: GeometricShape }> } | null = null;
+// Enhanced cache with WeakMap for memory efficiency
+const lookupCacheWeakMap = new WeakMap<Record<string, Entity>, {
+    entityLookup: Map<string, Entity>;
+    shapeLookup: Map<string, { entityId: string; shape: GeometricShape }>;
+    boundingBoxCache: Map<string, BoundingBox>;
+    timestamp: number;
+}>();
 
-export function createLookupMaps(entities: {
-    [p: string]: {
-        metaData: EntityMetaData;
-        visible: boolean;
-        shapes: {
-            [p: string]: {
-                shapeType: "point" | "line" | "arc" | "circle" | "ellipse" | "polygon" | "rectangle" | "text";
-                entityType: string;
-                style?: { radius?: number; fillColor?: string; strokeColor?: string } | {
-                    strokeColor?: string;
-                    strokeWidth?: number;
-                    dashPattern?: number[]
-                } | { strokeColor?: string; strokeWidth?: number; fillColor?: string } | {
-                    fontSize?: number;
-                    fontFamily?: string;
-                    color?: string;
-                    align?: "left" | "center" | "right";
-                    rotation?: number
-                };
-                subType: string;
-                id: string
-            }
-        };
-        id: string
-    }
-}): typeof lastResult {
+const CACHE_DURATION = 100; // ms
+
+/**
+ * Optimized function that creates all lookup maps and bounding boxes in a single pass
+ */
+export function createOptimizedLookups(entities: Record<string, Entity>) {
     const now = performance.now();
-    const THROTTLE_MS = 50; // adjust this to your needs
 
-    if (lastResult && now - lastRun < THROTTLE_MS) {
-        return lastResult;
+    // Check cache first
+    const cached = lookupCacheWeakMap.get(entities);
+    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+        return cached;
     }
 
     const entityLookup = new Map<string, Entity>();
     const shapeLookup = new Map<string, { entityId: string; shape: GeometricShape }>();
+    const boundingBoxCache = new Map<string, BoundingBox>();
 
+    // Single pass through all entities and shapes
     for (const entityId in entities) {
         const entity = entities[entityId];
-        entityLookup.set(entityId, <Entity>entity);
+        entityLookup.set(entityId, entity);
 
         const shapes = entity.shapes;
         if (!shapes) continue;
 
+        // Process all shapes for this entity in one go
         for (const shapeId in shapes) {
+            const shape = shapes[shapeId];
+
+            // Add to shape lookup
             shapeLookup.set(shapeId, {
                 entityId,
-                shape: shapes[shapeId],
+                shape,
             });
+
+            // Calculate and cache bounding box
+            const bbox = calculateBoundingBox(shape);
+            boundingBoxCache.set(shapeId, bbox);
         }
     }
 
-    lastRun = now;
-    lastResult = { entityLookup, shapeLookup };
+    const result = {
+        entityLookup,
+        shapeLookup,
+        boundingBoxCache,
+        timestamp: now
+    };
 
-    return lastResult;
+    // Cache the result
+    lookupCacheWeakMap.set(entities, result);
+
+    return result;
 }
 
 /**
- * Main reducer for editor state
+ * Optimized reducer with better performance characteristics
  */
 export const editorReducer = (state: EditorState, action: EditorAction): EditorState => {
-    // let updatedState: EditorState;
-
     switch (action.type) {
         case 'UPDATE_LOOKUP_MAPS': {
             return {
@@ -81,127 +83,128 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
 
         case 'SET_ENTITIES': {
             const newEntities = action.payload;
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
-
+            const lookups = createOptimizedLookups(newEntities);
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: lookups.entityLookup,
+                shapeLookup: lookups.shapeLookup,
+                boundingBoxCache: lookups.boundingBoxCache
             };
         }
 
-        case 'SET_SVG_BACKGROUND':
-            // Skip if background hasn't changed
+        case 'SET_SVG_BACKGROUND': {
             if (state.svgBackground === action.payload) {
                 return state;
             }
-
             return {
                 ...state,
                 svgBackground: action.payload,
             };
+        }
 
         case 'TOGGLE_ENTITY_VISIBILITY': {
             const { entityId } = action.payload;
             const entity = state.entities[entityId];
-
             if (!entity) return state;
+
+            const newEntity = {
+                ...entity,
+                visible: !entity.visible
+            };
 
             const newEntities = {
                 ...state.entities,
-                [entityId]: {
-                    ...entity,
-                    visible: !entity.visible
-                }
+                [entityId]: newEntity
             };
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
-
+            // Update only the affected entity in lookup
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, newEntity);
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: state.shapeLookup,
+                boundingBoxCache: state.boundingBoxCache
             };
         }
 
         case 'ADD_ENTITY': {
             const { id, name, description, color } = action.payload;
-
-            // Create the new entity structure
-            const newEntity = {
+            const newEntity: Entity = {
                 id,
                 metaData: {
                     entityName: name,
                     altText: description,
                     fontColor: color
                 },
-                shapes: {},  // Initialize with empty shapes object
-                visible: true, // Ensure visibility is set
+                shapes: {},
+                visible: true,
             };
 
-            // Create new entities object with the new entity added
             const newEntities = {
                 ...state.entities,
                 [id]: newEntity
             };
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
-
+            // Optimized: just add to existing lookups
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(id, newEntity);
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: state.shapeLookup,
+                boundingBoxCache: state.boundingBoxCache
             };
         }
 
         case 'DELETE_ENTITY': {
-            // Check if this entity actually exists
             if (!state.entities[action.payload]) {
                 return state;
             }
 
-            // Use destructuring to create a new object without the deleted entity
-            const { [action.payload]: deletedEntity, ...remainingEntities } = { ...state.entities };
+            const { [action.payload]: deletedEntity, ...remainingEntities } = state.entities;
 
-            // Update lookup maps
-            const { entityLookup, shapeLookup } = createLookupMaps(remainingEntities);
+            // Optimized: remove from lookups without full recreation
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.delete(action.payload);
+
+            const newShapeLookup = new Map(state.shapeLookup);
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+
+            // Remove all shapes for this entity
+            if (deletedEntity.shapes) {
+                for (const shapeId in deletedEntity.shapes) {
+                    newShapeLookup.delete(shapeId);
+                    newBoundingBoxCache.delete(shapeId);
+                }
+            }
 
             return {
                 ...state,
                 entities: remainingEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
             };
         }
 
         case 'ADD_SHAPE': {
             const { entityId, shape } = action.payload;
             const entity = state.entities[entityId];
-
             if (!entity) return state;
 
-            // Create the new shape object with a unique ID if not provided
             const shapeId = shape.id || uuidv4();
             const newShape: GeometricShape = {
                 ...shape,
                 id: shapeId,
             };
 
-            // Update entity with the new shape
             const updatedEntity = {
                 ...entity,
                 shapes: {
@@ -215,17 +218,22 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 [entityId]: updatedEntity
             };
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
+            // Optimized: just add to lookups
+            const newShapeLookup = new Map(state.shapeLookup);
+            newShapeLookup.set(shapeId, { entityId, shape: newShape });
 
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+            newBoundingBoxCache.set(shapeId, calculateBoundingBox(newShape));
+
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
             };
         }
 
@@ -235,47 +243,48 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
 
             if (!entity || !entity.shapes[shapeId]) return state;
 
-            // Create a new shapes object without the deleted shape
-            const { [shapeId]: deletedShape, ...remainingShapes } = { ...entity.shapes };
+            const { [shapeId]: deletedShape, ...remainingShapes } = entity.shapes;
+
+            const updatedEntity = {
+                ...entity,
+                shapes: remainingShapes
+            };
 
             const newEntities = {
                 ...state.entities,
-                [entityId]: {
-                    ...entity,
-                    shapes: remainingShapes
-                }
+                [entityId]: updatedEntity
             };
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
+            // Update lookups
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
 
+            const newShapeLookup = new Map(state.shapeLookup);
+            newShapeLookup.delete(shapeId);
+
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+            newBoundingBoxCache.delete(shapeId);
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
             };
         }
 
         case 'ADD_POINT': {
             const { entityId, shapeId, point, index } = action.payload;
-            const entity = state.entities[entityId];
+            const shapeInfo = state.shapeLookup.get(shapeId);
 
-            if (!entity) return state;
+            if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
 
-            const shape = entity.shapes[shapeId];
-
-            if (!shape) return state;
-
-            // Only polygons and lines can have points added
+            const shape = shapeInfo.shape;
             if (shape.shapeType !== 'polygon' && shape.shapeType !== 'line') {
                 return state;
             }
 
-            // Validate point
             if (!validateCoordinates(point)) {
                 return state;
             }
@@ -283,134 +292,102 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             let newPoints;
             if (shape.shapeType === 'polygon') {
                 const polygonShape = shape as PolygonShape;
-
-                // Validate index
                 if (index < 0 || index > polygonShape.points.length) {
                     return state;
                 }
-
-                // Create new points array with the new point inserted
                 newPoints = [...polygonShape.points];
                 newPoints.splice(index, 0, point);
-
-                // Use the helper function to only update the changed parts
-                const newEntities = updateNestedObject(
-                    state.entities,
-                    [entityId, 'shapes', shapeId, 'points'],
-                    () => newPoints
-                );
-
-                // Update lookup maps
-                const lookup = createLookupMaps(newEntities);
-                if (!lookup) return state; // or handle gracefully
-                const { entityLookup, shapeLookup } = lookup;
-
-
-                return {
-                    ...state,
-                    entities: newEntities,
-                    entityLookup,
-                    shapeLookup
-                };
             } else if (shape.shapeType === 'line') {
                 const lineShape = shape as LineShape;
-
-                // For lines, we can only add points at the beginning or end
                 if (index < 0 || index > lineShape.points.length) {
                     return state;
                 }
-
                 newPoints = [...lineShape.points];
                 newPoints.splice(index, 0, point);
-
-                // Update to keep it as a line with 2 points
+                // Keep only 2 points for a line
                 if (newPoints.length > 2) {
-                    // If adding to a line, we need to decide if we're extending the line
-                    // or converting it to a polyline
-                    // For now, let's keep it simple and just update the endpoints
                     newPoints = index === 0 ? [point, lineShape.points[1]] : [lineShape.points[0], point];
                 }
-
-                const newEntities = updateNestedObject(
-                    state.entities,
-                    [entityId, 'shapes', shapeId, 'points'],
-                    () => newPoints
-                );
-
-                // Update lookup maps
-                const lookup = createLookupMaps(newEntities);
-                if (!lookup) return state; // or handle gracefully
-                const { entityLookup, shapeLookup } = lookup;
-
-
-                return {
-                    ...state,
-                    entities: newEntities,
-                    entityLookup,
-                    shapeLookup
-                };
+            } else {
+                return state;
             }
 
-            return state;
+            const newShape = {
+                ...shape,
+                points: newPoints
+            };
+
+            const newEntities = updateNestedObject(
+                state.entities,
+                [entityId, 'shapes', shapeId],
+                () => newShape
+            );
+
+            // Update lookups
+            const newShapeLookup = new Map(state.shapeLookup);
+            newShapeLookup.set(shapeId, { entityId, shape: newShape });
+
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+            newBoundingBoxCache.set(shapeId, calculateBoundingBox(newShape));
+
+            return {
+                ...state,
+                entities: newEntities,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
+            };
         }
 
         case 'DELETE_POINT': {
             const { entityId, shapeId, pointIndex } = action.payload;
-            const entity = state.entities[entityId];
+            const shapeInfo = state.shapeLookup.get(shapeId);
 
-            if (!entity) return state;
+            if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
 
-            const shape = entity.shapes[shapeId];
-
-            if (!shape) return state;
-
-            // Only polygons and lines can have points deleted
+            const shape = shapeInfo.shape;
             if (shape.shapeType !== 'polygon' && shape.shapeType !== 'line') {
                 return state;
             }
 
             if (shape.shapeType === 'polygon') {
                 const polygonShape = shape as PolygonShape;
-
-                // Ensure polygon maintains at least 3 points
                 if (polygonShape.points.length <= 3) return state;
-
-                // Validate index
                 if (pointIndex < 0 || pointIndex >= polygonShape.points.length) {
                     return state;
                 }
 
-                // Create new points array without the deleted point
                 const newPoints = [...polygonShape.points];
                 newPoints.splice(pointIndex, 1);
 
-                // Use the helper function to only update the changed parts
+                const newShape = {
+                    ...shape,
+                    points: newPoints
+                };
+
                 const newEntities = updateNestedObject(
                     state.entities,
-                    [entityId, 'shapes', shapeId, 'points'],
-                    () => newPoints
+                    [entityId, 'shapes', shapeId],
+                    () => newShape
                 );
 
-                // Update lookup maps
-                const lookup = createLookupMaps(newEntities);
-                if (!lookup) return state; // or handle gracefully
-                const { entityLookup, shapeLookup } = lookup;
+                // Update lookups
+                const newShapeLookup = new Map(state.shapeLookup);
+                newShapeLookup.set(shapeId, { entityId, shape: newShape });
 
+                const newBoundingBoxCache = new Map(state.boundingBoxCache);
+                newBoundingBoxCache.set(shapeId, calculateBoundingBox(newShape));
 
                 return {
                     ...state,
                     entities: newEntities,
-                    entityLookup,
-                    shapeLookup
+                    shapeLookup: newShapeLookup,
+                    boundingBoxCache: newBoundingBoxCache
                 };
             } else if (shape.shapeType === 'line') {
                 // Lines need at least 2 points
                 const lineShape = shape as LineShape;
                 if (lineShape.points.length <= 2) return state;
-
-                // For lines, deleting a point might convert it to a simple 2-point line
-                // This is a design decision - you could also delete the entire line
-                return state;  // For now, don't allow deleting points from lines
+                return state; // Don't allow deleting points from lines
             }
 
             return state;
@@ -418,20 +395,15 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
 
         case 'MOVE_POINT': {
             const { entityId, shapeId, pointIndex, newPosition } = action.payload;
-            const entity = state.entities[entityId];
 
-            if (!entity) return state;
+            const shapeInfo = state.shapeLookup.get(shapeId);
+            if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
 
-            const shape = entity.shapes[shapeId];
-
-            if (!shape) return state;
-
-            // Only polygons and lines can have points moved
+            const shape = shapeInfo.shape;
             if (shape.shapeType !== 'polygon' && shape.shapeType !== 'line') {
                 return state;
             }
 
-            // Validate coordinates
             if (!validateCoordinates(newPosition)) {
                 return state;
             }
@@ -439,55 +411,52 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             let currentPoints;
             if (shape.shapeType === 'polygon') {
                 currentPoints = (shape as PolygonShape).points;
-            } else if (shape.shapeType === 'line') {
-                currentPoints = (shape as LineShape).points;
             } else {
-                return state;
+                currentPoints = (shape as LineShape).points;
             }
 
-            // Validate index
             if (pointIndex < 0 || pointIndex >= currentPoints.length) {
                 return state;
             }
 
-            // Skip update if position didn't change significantly
             const currentPoint = currentPoints[pointIndex];
             if (arePointsEqual(currentPoint, newPosition)) {
                 return state;
             }
 
-            // Round coordinates to prevent floating point errors causing jumpiness
             const roundedPosition = roundCoordinates(newPosition);
-
-            // Create new points array with the updated point
             const newPoints = [...currentPoints];
             newPoints[pointIndex] = roundedPosition;
 
-            // Use the helper function to only update the changed parts
+            const newShape = {
+                ...shape,
+                points: newPoints
+            };
+
             const newEntities = updateNestedObject(
                 state.entities,
-                [entityId, 'shapes', shapeId, 'points'],
-                () => newPoints
+                [entityId, 'shapes', shapeId],
+                () => newShape
             );
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
+            // Update shape lookup and bounding box for just this shape
+            const newShapeLookup = new Map(state.shapeLookup);
+            newShapeLookup.set(shapeId, { entityId, shape: newShape });
 
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+            newBoundingBoxCache.set(shapeId, calculateBoundingBox(newShape));
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
             };
         }
 
         case 'BATCH_IMPORT_ENTITIES': {
             const newEntities = action.payload;
 
-            // Skip if empty
             if (Object.keys(newEntities).length === 0) {
                 return state;
             }
@@ -497,14 +466,15 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 ...newEntities
             };
 
-            // Update lookup maps
-            const { entityLookup, shapeLookup } = createLookupMaps(mergedEntities);
+            // Update all lookups
+            const lookups = createOptimizedLookups(mergedEntities);
 
             return {
                 ...state,
                 entities: mergedEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: lookups.entityLookup,
+                shapeLookup: lookups.shapeLookup,
+                boundingBoxCache: lookups.boundingBoxCache
             };
         }
 
@@ -514,50 +484,54 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
 
             if (!entity) return state;
 
-            // Skip if no new shapes
             if (Object.keys(shapes).length === 0) {
                 return state;
             }
 
-            const newEntities = {
-                ...state.entities,
-                [entityId]: {
-                    ...entity,
-                    shapes: {
-                        ...entity.shapes,
-                        ...shapes
-                    }
+            const updatedEntity = {
+                ...entity,
+                shapes: {
+                    ...entity.shapes,
+                    ...shapes
                 }
             };
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
+            const newEntities = {
+                ...state.entities,
+                [entityId]: updatedEntity
+            };
 
+            // Update lookups for new shapes
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
+
+            const newShapeLookup = new Map(state.shapeLookup);
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+
+            for (const [shapeId, shape] of Object.entries(shapes)) {
+                newShapeLookup.set(shapeId, { entityId, shape });
+                newBoundingBoxCache.set(shapeId, calculateBoundingBox(shape));
+            }
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
             };
         }
 
         case 'DUPLICATE_SHAPE': {
             const { entityId, shapeId, offset = { x: 20, y: 20 } } = action.payload;
-            const entity = state.entities[entityId];
+            const shapeInfo = state.shapeLookup.get(shapeId);
 
-            if (!entity) return state;
+            if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
 
-            const shape = entity.shapes[shapeId];
-
-            if (!shape) return state;
-
-            // Create a new shape ID
+            const shape = shapeInfo.shape;
             const newShapeId = uuidv4();
 
-            // Create a deep copy of the shape with offset applied based on shape type
+            // Create a deep copy of the shape with offset applied
             let newShape: GeometricShape;
 
             switch (shape.shapeType) {
@@ -583,18 +557,19 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                         points: lineShape.points.map(point => ({
                             x: point.x + offset.x,
                             y: point.y + offset.y
-                        }))
+                        })) as [Point, Point]
                     };
                     break;
                 }
 
                 case 'point': {
+                    const pointShape = shape as PointShape;
                     newShape = {
-                        ...shape,
+                        ...pointShape,
                         id: newShapeId,
                         point: {
-                            x: shape.point.x + offset.x,
-                            y: shape.point.y + offset.y
+                            x: pointShape.point.x + offset.x,
+                            y: pointShape.point.y + offset.y
                         }
                     };
                     break;
@@ -610,7 +585,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                             x: shape.center.x + offset.x,
                             y: shape.center.y + offset.y
                         }
-                    };
+                    } as GeometricShape;
                     break;
                 }
 
@@ -622,7 +597,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                             x: shape.position.x + offset.x,
                             y: shape.position.y + offset.y
                         }
-                    };
+                    } as GeometricShape;
                     break;
                 }
 
@@ -630,28 +605,36 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     return state;
             }
 
-            const newEntities = {
-                ...state.entities,
-                [entityId]: {
-                    ...entity,
-                    shapes: {
-                        ...entity.shapes,
-                        [newShapeId]: newShape
-                    }
+            const entity = state.entities[entityId];
+            const updatedEntity = {
+                ...entity,
+                shapes: {
+                    ...entity.shapes,
+                    [newShapeId]: newShape
                 }
             };
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
+            const newEntities = {
+                ...state.entities,
+                [entityId]: updatedEntity
+            };
 
+            // Update lookups
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
+
+            const newShapeLookup = new Map(state.shapeLookup);
+            newShapeLookup.set(newShapeId, { entityId, shape: newShape });
+
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+            newBoundingBoxCache.set(newShapeId, calculateBoundingBox(newShape));
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
             };
         }
 
@@ -670,40 +653,39 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
-            const newEntities = {
-                ...state.entities,
-                [entityId]: {
-                    ...entity,
-                    metaData: {
-                        ...entity.metaData,
-                        ...metaData
-                    }
+            const updatedEntity = {
+                ...entity,
+                metaData: {
+                    ...entity.metaData,
+                    ...metaData
                 }
             };
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
+            const newEntities = {
+                ...state.entities,
+                [entityId]: updatedEntity
+            };
 
+            // Update lookup
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: state.shapeLookup,
+                boundingBoxCache: state.boundingBoxCache
             };
         }
 
         case 'UPDATE_SHAPE_PROPERTIES': {
             const { entityId, shapeId, properties } = action.payload;
-            const entity = state.entities[entityId];
+            const shapeInfo = state.shapeLookup.get(shapeId);
 
-            if (!entity) return state;
+            if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
 
-            const shape = entity.shapes[shapeId];
-
-            if (!shape) return state;
+            const shape = shapeInfo.shape;
 
             // Skip if no changes
             let hasChanges = false;
@@ -718,30 +700,41 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
-            const newEntities = {
-                ...state.entities,
-                [entityId]: {
-                    ...entity,
-                    shapes: {
-                        ...entity.shapes,
-                        [shapeId]: {
-                            ...shape,
-                            ...properties
-                        }
-                    }
+            const newShape = {
+                ...shape,
+                ...properties
+            } as GeometricShape;
+
+            const entity = state.entities[entityId];
+            const updatedEntity = {
+                ...entity,
+                shapes: {
+                    ...entity.shapes,
+                    [shapeId]: newShape
                 }
             };
 
-            // Update lookup maps
-            const lookup = createLookupMaps(newEntities);
-            if (!lookup) return state; // or handle gracefully
-            const { entityLookup, shapeLookup } = lookup;
+            const newEntities = {
+                ...state.entities,
+                [entityId]: updatedEntity
+            };
+
+            // Update lookups
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
+
+            const newShapeLookup = new Map(state.shapeLookup);
+            newShapeLookup.set(shapeId, { entityId, shape: newShape });
+
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+            newBoundingBoxCache.set(shapeId, calculateBoundingBox(newShape));
 
             return {
                 ...state,
                 entities: newEntities,
-                entityLookup,
-                shapeLookup
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
             };
         }
 

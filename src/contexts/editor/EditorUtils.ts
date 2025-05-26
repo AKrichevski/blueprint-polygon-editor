@@ -1,29 +1,11 @@
 // @ts-nocheck
 // src/contexts/editor/EditorUtils.ts
-import type {Point, Polygon, BoundingBox} from "../../types"
-import {calculateBoundingBox} from "../../utils/geometryUtils.ts";
+import type {Point} from "../../types"
 import {POSITION_EPSILON} from "../../consts";
 
 // Constants for storage handling
 const MAX_STORAGE_ATTEMPTS = 3;
 const STORAGE_RETRY_DELAY = 100; // ms
-
-export const updateBoundingBoxCache = (entities) => {
-    const newBoundingBoxes = new Map<string, BoundingBox>();
-
-    for (const entityId in entities) {
-        const entity = entities[entityId];
-        const shapes = entity.shapes;
-
-        for (const shapeId in shapes) {
-            const shape = shapes[shapeId];
-            const bbox = calculateBoundingBox(shape);
-            newBoundingBoxes.set(shapeId, bbox);
-        }
-    }
-
-    return newBoundingBoxes;
-}
 
 /**
  * Try to safely save to localStorage with size reduction if needed
@@ -35,7 +17,7 @@ export async function safeLocalStorageSave(key: string, data: any): Promise<bool
     while (currentAttempt < MAX_STORAGE_ATTEMPTS) {
         try {
             localStorage.setItem(key, jsonData);
-            console.log('State manually saved to localStorage');
+            console.log('State saved to localStorage');
             return true;
         } catch (error) {
             currentAttempt++;
@@ -161,3 +143,49 @@ export function arePointsEqual(point1: Point, point2: Point, epsilon = POSITION_
     );
 }
 
+/**
+ * Batch similar actions together for better performance
+ */
+export function batchActions(actions: any[]): any[] {
+    const batched: any[] = [];
+    const movePointMap = new Map<string, any>();
+
+    for (const action of actions) {
+        if (action.type === 'MOVE_POINT') {
+            // Key by entity-shape-point
+            const key = `${action.payload.entityId}-${action.payload.shapeId}-${action.payload.pointIndex}`;
+            movePointMap.set(key, action); // Keep only the last move for each point
+        } else {
+            batched.push(action);
+        }
+    }
+
+    // Add the final move point actions
+    movePointMap.forEach(action => batched.push(action));
+
+    return batched;
+}
+
+/**
+ * Deep freeze an object to ensure immutability in development
+ */
+export function deepFreeze<T>(obj: T): T {
+    if (process.env.NODE_ENV === 'production') {
+        return obj; // Skip in production for performance
+    }
+
+    Object.freeze(obj);
+
+    if (obj !== null && typeof obj === 'object') {
+        Object.getOwnPropertyNames(obj).forEach(prop => {
+            if (obj[prop as keyof T] !== null &&
+                (typeof obj[prop as keyof T] === 'object' ||
+                    typeof obj[prop as keyof T] === 'function') &&
+                !Object.isFrozen(obj[prop as keyof T])) {
+                deepFreeze(obj[prop as keyof T]);
+            }
+        });
+    }
+
+    return obj;
+}

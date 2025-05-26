@@ -87,7 +87,7 @@ const LineRenderer: React.FC<LineRendererProps> = memo(({
     ]);
 
     return (
-        <Group>
+        <Group draggable={mode === "select" && isSelected}>
             <Line
                 points={points}
                 stroke={strokeColor}

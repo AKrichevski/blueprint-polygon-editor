@@ -1,6 +1,7 @@
-// Local storage key
+// src/consts/index.ts
 import type {EditorState} from "../contexts/editor";
 
+// Local storage key
 export const STORAGE_KEY = 'blueprint-polygon-editor-state';
 
 export enum EditMode {
@@ -29,7 +30,9 @@ export const initialEditorState: EditorState = {
     svgBackground: null,
     // Initialize empty lookup maps
     entityLookup: new Map(),
-    shapeLookup: new Map()
+    shapeLookup: new Map(),
+    // Initialize bounding box cache
+    boundingBoxCache: new Map()
 };
 
 // Constants for state management
