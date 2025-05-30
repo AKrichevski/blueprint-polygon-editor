@@ -367,7 +367,7 @@ export function isPointInShape(shape: GeometricShape, point: Point, tolerance = 
 }
 
 /**
- * Optimized coordinate transformations
+ * Improved coordinate transformations with proper precision handling
  */
 export function viewportToWorld(viewportX: number, viewportY: number, position: Point, scale: number): Point {
     return {

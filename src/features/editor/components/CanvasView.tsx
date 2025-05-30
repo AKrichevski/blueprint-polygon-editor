@@ -44,9 +44,10 @@ const EntityRenderer = memo(({
     if (!entity.visible || !entity.shapes || Object.keys(entity.shapes).length === 0) {
         return null;
     }
-
     // Check if this entity has the selected shape for optimization
     const hasSelectedShape = selectedShapeId && entity.shapes[selectedShapeId];
+    hasSelectedShape && console.log("zzzz entity.entityId", entity.entityId)
+
 
     return (
         <Group
@@ -188,7 +189,7 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         >
             <Stage ref={stageRef} {...stageProps}>
                 <Layer>
-                    <GridRenderer width={width} height={height} />
+                    {/*<GridRenderer width={width} height={height} />*/}
                     <BackgroundRenderer />
                     {renderedEntities}
                 </Layer>

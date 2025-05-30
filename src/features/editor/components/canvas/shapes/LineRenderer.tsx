@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from "react";
+import React, { memo, useMemo, useRef, useCallback } from "react";
 import type { LineShape } from "../../../../../types";
 import { useEditor } from "../../../../../contexts/editor";
 import { useShapeInteractions } from "../../../hooks";
@@ -21,103 +21,146 @@ const LineRenderer: React.FC<LineRendererProps> = memo(({
                                                             entityId,
                                                         }) => {
     const { mode, selectedPointIndex } = useEditor();
+    const shapeGroupRef = useRef<any>(null);
+
     const {
         handlePointClick,
-        handlePointDragEnd,
-        handlePointDrag,
         handlePointDragStart,
-        handleShapeClick
+        handlePointDrag,
+        handlePointDragEnd,
+        handleShapeClick,
+        handleShapeDragEnd
     } = useShapeInteractions();
 
-    // Memoize line properties
-    const strokeColor = useMemo(() =>
-            shape.style?.strokeColor || color,
+    // ---- memoized style + geometry ----
+    const strokeColor = useMemo(
+        () => shape.style?.strokeColor || color,
         [shape.style?.strokeColor, color]
     );
-
-    const strokeWidth = useMemo(() =>
-            (shape.style?.strokeWidth || 1) * (isSelected ? 1.5 : 1),
+    const strokeWidth = useMemo(
+        () => ((shape.style?.strokeWidth || 1) * (isSelected ? 1.5 : 1)),
         [shape.style?.strokeWidth, isSelected]
     );
-
-    const dashPattern = useMemo(() =>
-            shape.style?.dashPattern,
+    const dashPattern = useMemo(
+        () => shape.style?.dashPattern,
         [shape.style?.dashPattern]
     );
-
-    // Memoize flat points array for Konva
-    const points = useMemo(() =>
-            shape.points.flatMap(p => [p.x, p.y]),
+    const points = useMemo(
+        () => shape.points.flatMap(p => [p.x, p.y]),
         [shape.points]
     );
 
-    // Memoize endpoints rendering for selected state
+    // ---- helper to reset the Group origin ----
+    const resetGroupOrigin = useCallback(() => {
+        if (shapeGroupRef.current) {
+            shapeGroupRef.current.position({ x: 0, y: 0 });
+        }
+    }, []);
+
+    // ---- point‐drag handlers ----
+    const handlePointDragStartCustom = useCallback((i: number) => (e: any) => {
+        e.cancelBubble = true;
+        e.evt.stopPropagation();
+        resetGroupOrigin();
+        handlePointDragStart(entityId, shapeId, i, e);
+    }, [entityId, shapeId, handlePointDragStart, resetGroupOrigin]);
+
+    const handlePointDragCustom = useCallback((i: number) => (e: any) => {
+        e.cancelBubble = true;
+        e.evt.stopPropagation();
+        handlePointDrag(entityId, shapeId, i, e);
+    }, [entityId, shapeId, handlePointDrag]);
+
+    const handlePointDragEndCustom = useCallback((i: number) => (e: any) => {
+        e.cancelBubble = true;
+        e.evt.stopPropagation();
+        resetGroupOrigin();
+        handlePointDragEnd(entityId, shapeId, i, e);
+    }, [entityId, shapeId, handlePointDragEnd, resetGroupOrigin]);
+
+    // ---- shape‐drag end handler (unchanged) ----
+    const handleShapeDragEndCustom = useCallback((e: any) => {
+        const grp = e.target;
+        const x = grp.x(), y = grp.y();
+        if (Math.abs(x) > 0.01 || Math.abs(y) > 0.01) {
+            handleShapeDragEnd(entityId, shapeId, e);
+            grp.position({ x: 0, y: 0 });
+        }
+    }, [entityId, shapeId, handleShapeDragEnd]);
+
+    // ---- render the draggable endpoints when selected ----
     const endpoints = useMemo(() => {
         if (!isSelected) return null;
-
-        return shape.points.map((point, index) => (
+        return shape.points.map((pt, i) => (
             <Circle
-                key={`endpoint-${index}`}
-                x={point.x}
-                y={point.y}
-                radius={selectedPointIndex === index ? canvas.selectedPointRadius : canvas.pointRadius}
-                fill={selectedPointIndex === index ? colors.danger[500] : color}
-                stroke="#ffffff"
+                key={`endpoint-${i}-${pt.x}-${pt.y}`}
+                x={pt.x}
+                y={pt.y}
+                radius={ selectedPointIndex === i
+                    ? canvas.selectedPointRadius
+                    : canvas.pointRadius
+                }
+                fill={ selectedPointIndex === i
+                    ? colors.danger[500]
+                    : color
+                }
+                stroke="#fff"
                 strokeWidth={1}
-                draggable={mode === 'select'}
-                onClick={() => handlePointClick(entityId, shape.id, index)}
-                onDragStart={(e) => handlePointDragStart(entityId, shape.id, index, e)}
-                onDragMove={(e) => handlePointDrag(entityId, shape.id, index, e)}
-                onDragEnd={(e) => handlePointDragEnd(entityId, shape.id, index, e)}
-                perfectDrawEnabled={false} // Performance optimization
+                draggable={mode === "select" && selectedPointIndex !== null}
+                onClick={() => handlePointClick(entityId, shapeId, i)}
+                onDragStart={handlePointDragStartCustom(i)}
+                onDragMove={handlePointDragCustom(i)}
+                onDragEnd={handlePointDragEndCustom(i)}
+                perfectDrawEnabled={false}
+                listening={true}
             />
         ));
     }, [
-        isSelected,
-        shape.points,
-        shape.id,
-        selectedPointIndex,
-        mode,
-        color,
-        entityId,
+        isSelected, shape.points, selectedPointIndex,
+        mode, color, entityId, shapeId,
         handlePointClick,
-        handlePointDrag,
-        handlePointDragStart,
-        handlePointDragEnd
+        handlePointDragStartCustom,
+        handlePointDragCustom,
+        handlePointDragEndCustom
     ]);
 
+    const isGroupDraggable = mode === "select" && isSelected;
+
     return (
-        <Group draggable={mode === "select" && isSelected}>
+        <Group
+            ref={shapeGroupRef}
+            draggable={isGroupDraggable}
+            onDragStart={resetGroupOrigin}
+            onDragEnd={handleShapeDragEndCustom}
+        >
+            {/* main line, pinned at origin */}
             <Line
+                x={0}
+                y={0}
                 points={points}
                 stroke={strokeColor}
                 strokeWidth={strokeWidth}
                 dash={dashPattern}
                 onClick={() => handleShapeClick(entityId, shapeId)}
                 hitStrokeWidth={10}
-                perfectDrawEnabled={false} // Performance optimization
-                attrs={{
-                    entityId,
-                    shapeId,
-                    type: 'line'
-                }}
+                perfectDrawEnabled={false}
             />
 
-            {/* Render endpoints when selected */}
+            {/* endpoints */}
             {endpoints}
         </Group>
     );
-});
+}, arePropsEqual);
 
-// Custom equality function for props comparison
-function arePropsEqual(prev: LineRendererProps, next: LineRendererProps) {
+// same shallow compare as before
+function arePropsEqual(a: LineRendererProps, b: LineRendererProps) {
     return (
-        prev.shape === next.shape &&
-        prev.isSelected === next.isSelected &&
-        prev.color === next.color &&
-        prev.entityId === next.entityId &&
-        prev.shapeId === next.shapeId
+        a.shape === b.shape &&
+        a.isSelected === b.isSelected &&
+        a.color === b.color &&
+        a.entityId === b.entityId &&
+        a.shapeId === b.shapeId
     );
 }
 
-export default memo(LineRenderer, arePropsEqual);
+export default LineRenderer;

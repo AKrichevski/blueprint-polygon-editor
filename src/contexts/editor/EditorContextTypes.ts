@@ -1,5 +1,5 @@
 // src/contexts/editor/EditorContextTypes.ts
-import type { Entity, Point, GeometricShape, EntityMetaData, BoundingBox } from "../../types";
+import type {Entity, Point, GeometricShape, EntityMetaData, BoundingBox} from "../../types";
 import React from "react";
 import {EditMode} from "../../consts";
 
@@ -14,13 +14,33 @@ export type EditorAction =
     | { type: 'ADD_POINT'; payload: { entityId: string; shapeId: string; point: Point; index: number } }
     | { type: 'DELETE_POINT'; payload: { entityId: string; shapeId: string; pointIndex: number } }
     | { type: 'MOVE_POINT'; payload: { entityId: string; shapeId: string; pointIndex: number; newPosition: Point } }
+    | { type: 'MOVE_SHAPE'; payload: { entityId: string; shapeId: string; offset: Point } } // NEW ACTION
     | { type: 'BATCH_IMPORT_ENTITIES'; payload: Record<string, Entity> }
     | { type: 'BATCH_UPDATE_SHAPES'; payload: { entityId: string; shapes: Record<string, GeometricShape> } }
     | { type: 'DUPLICATE_SHAPE'; payload: { entityId: string; shapeId: string; offset?: Point } }
     | { type: 'UPDATE_ENTITY_METADATA'; payload: { entityId: string; metaData: Partial<EntityMetaData> } }
-    | { type: 'UPDATE_SHAPE_PROPERTIES'; payload: { entityId: string; shapeId: string; properties: Partial<GeometricShape> } }
+    | {
+    type: 'UPDATE_SHAPE_PROPERTIES';
+    payload: { entityId: string; shapeId: string; properties: Partial<GeometricShape> }
+}
     | { type: 'TOGGLE_ENTITY_VISIBILITY'; payload: { entityId: string } }
-    | { type: 'UPDATE_LOOKUP_MAPS'; payload: { entityLookup: Map<string, Entity>; shapeLookup: Map<string, { entityId: string; shape: GeometricShape }> } };
+    | {
+    type: 'UPDATE_LOOKUP_MAPS';
+    payload: {
+        entityLookup: Map<string, Entity>;
+        shapeLookup: Map<string, { entityId: string; shape: GeometricShape }>
+    }
+}
+    | {
+    type: 'MOVE_EDGE'; payload: {
+        entityId: string;
+        shapeId: string;
+        startIndex: number;
+        endIndex: number;
+        newStartPosition: Point;
+        newEndPosition: Point
+    }
+};
 
 // EditorState interface with performance optimizations
 export interface EditorState {

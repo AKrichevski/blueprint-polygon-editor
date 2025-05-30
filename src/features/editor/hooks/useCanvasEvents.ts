@@ -79,6 +79,21 @@ export const useCanvasEvents = (
             return;
         }
 
+        // Check if we're clicking on a draggable element
+        const target = e.target;
+        if (target.isDragging && target.isDragging()) {
+            return;
+        }
+
+        // Check if target has draggable ancestors
+        let currentTarget = target;
+        while (currentTarget) {
+            if (currentTarget.draggable && currentTarget.draggable()) {
+                return;
+            }
+            currentTarget = currentTarget.getParent();
+        }
+
         setIsDragging(true);
         dragStartRef.current = {
             x: e.evt.clientX - position.x,
@@ -90,13 +105,14 @@ export const useCanvasEvents = (
         if (!isDragging || !dragStartRef.current) {
             return;
         }
+
         const x = e.evt.clientX - dragStartRef.current?.x;
         const y = e.evt.clientY - dragStartRef.current?.y
 
         updatePosition(x, y)
     }, [isDragging, updatePosition]);
 
-    const handleCanvasMouseUp = useCallback(() => {
+    const handleCanvasMouseUp = useCallback((e: KonvaEventObject<MouseEvent>) => {
         setIsDragging(false);
         dragStartRef.current = null;
     }, []);

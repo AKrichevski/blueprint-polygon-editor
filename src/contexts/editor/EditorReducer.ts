@@ -424,22 +424,35 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
-            const roundedPosition = roundCoordinates(newPosition);
+            // Create new points array with the updated point
             const newPoints = [...currentPoints];
-            newPoints[pointIndex] = roundedPosition;
+            newPoints[pointIndex] = roundCoordinates(newPosition);
 
+            // Create new shape object
             const newShape = {
                 ...shape,
                 points: newPoints
+            } as GeometricShape;
+
+            // Create new entity with updated shape
+            const entity = state.entities[entityId];
+            const updatedEntity = {
+                ...entity,
+                shapes: {
+                    ...entity.shapes,
+                    [shapeId]: newShape
+                }
             };
 
-            const newEntities = updateNestedObject(
-                state.entities,
-                [entityId, 'shapes', shapeId],
-                () => newShape
-            );
+            const newEntities = {
+                ...state.entities,
+                [entityId]: updatedEntity
+            };
 
-            // Update shape lookup and bounding box for just this shape
+            // Update lookups efficiently
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
+
             const newShapeLookup = new Map(state.shapeLookup);
             newShapeLookup.set(shapeId, { entityId, shape: newShape });
 
@@ -449,6 +462,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             return {
                 ...state,
                 entities: newEntities,
+                entityLookup: newEntityLookup,
                 shapeLookup: newShapeLookup,
                 boundingBoxCache: newBoundingBoxCache
             };
@@ -720,6 +734,197 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             };
 
             // Update lookups
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
+
+            const newShapeLookup = new Map(state.shapeLookup);
+            newShapeLookup.set(shapeId, { entityId, shape: newShape });
+
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+            newBoundingBoxCache.set(shapeId, calculateBoundingBox(newShape));
+
+            return {
+                ...state,
+                entities: newEntities,
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
+            };
+        }
+
+        // Add this case to the editorReducer function in EditorReducer.ts
+        // Add this case to the editorReducer function in EditorReducer.ts
+// This should be inserted in the switch statement after the 'MOVE_POINT' case
+
+        case 'MOVE_SHAPE': {
+            const { entityId, shapeId, offset } = action.payload;
+            const shapeInfo = state.shapeLookup.get(shapeId);
+
+            if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
+
+            const shape = shapeInfo.shape;
+            let newShape: GeometricShape;
+
+            // Apply offset based on shape type
+            switch (shape.shapeType) {
+                case 'polygon':
+                case 'rectangle': {
+                    const polygonShape = shape as PolygonShape;
+                    newShape = {
+                        ...polygonShape,
+                        points: polygonShape.points.map(point => ({
+                            x: point.x + offset.x,
+                            y: point.y + offset.y
+                        }))
+                    };
+                    break;
+                }
+
+                case 'line': {
+                    const lineShape = shape as LineShape;
+                    newShape = {
+                        ...lineShape,
+                        points: lineShape.points.map(point => ({
+                            x: point.x + offset.x,
+                            y: point.y + offset.y
+                        })) as [Point, Point]
+                    };
+                    break;
+                }
+
+                case 'point': {
+                    const pointShape = shape as PointShape;
+                    newShape = {
+                        ...pointShape,
+                        point: {
+                            x: pointShape.point.x + offset.x,
+                            y: pointShape.point.y + offset.y
+                        }
+                    };
+                    break;
+                }
+
+                case 'circle':
+                case 'ellipse':
+                case 'arc': {
+                    newShape = {
+                        ...shape,
+                        center: {
+                            x: shape.center.x + offset.x,
+                            y: shape.center.y + offset.y
+                        }
+                    } as GeometricShape;
+                    break;
+                }
+
+                case 'text': {
+                    newShape = {
+                        ...shape,
+                        position: {
+                            x: shape.position.x + offset.x,
+                            y: shape.position.y + offset.y
+                        }
+                    } as GeometricShape;
+                    break;
+                }
+
+                default:
+                    return state;
+            }
+
+            // Create new entity with updated shape
+            const entity = state.entities[entityId];
+            const updatedEntity = {
+                ...entity,
+                shapes: {
+                    ...entity.shapes,
+                    [shapeId]: newShape
+                }
+            };
+
+            const newEntities = {
+                ...state.entities,
+                [entityId]: updatedEntity
+            };
+
+            // Update lookups efficiently
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(entityId, updatedEntity);
+
+            const newShapeLookup = new Map(state.shapeLookup);
+            newShapeLookup.set(shapeId, { entityId, shape: newShape });
+
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+            newBoundingBoxCache.set(shapeId, calculateBoundingBox(newShape));
+
+            return {
+                ...state,
+                entities: newEntities,
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache
+            };
+        }
+        case 'MOVE_EDGE': {
+            const { entityId, shapeId, startIndex, endIndex, newStartPosition, newEndPosition } = action.payload;
+            const shapeInfo = state.shapeLookup.get(shapeId);
+
+            if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
+
+            const shape = shapeInfo.shape;
+            if (shape.shapeType !== 'polygon' && shape.shapeType !== 'rectangle') {
+                return state;
+            }
+
+            const polygonShape = shape as PolygonShape;
+
+            // Validate indices
+            if (startIndex < 0 || startIndex >= polygonShape.points.length ||
+                endIndex < 0 || endIndex >= polygonShape.points.length) {
+                return state;
+            }
+
+            // Validate coordinates
+            if (!validateCoordinates(newStartPosition) || !validateCoordinates(newEndPosition)) {
+                return state;
+            }
+
+            // Check if positions actually changed
+            const currentStartPoint = polygonShape.points[startIndex];
+            const currentEndPoint = polygonShape.points[endIndex];
+
+            if (arePointsEqual(currentStartPoint, newStartPosition) &&
+                arePointsEqual(currentEndPoint, newEndPosition)) {
+                return state;
+            }
+
+            // Create new points array with updated edge
+            const newPoints = [...polygonShape.points];
+            newPoints[startIndex] = roundCoordinates(newStartPosition);
+            newPoints[endIndex] = roundCoordinates(newEndPosition);
+
+            // Create new shape object
+            const newShape = {
+                ...shape,
+                points: newPoints
+            } as GeometricShape;
+
+            // Create new entity with updated shape
+            const entity = state.entities[entityId];
+            const updatedEntity = {
+                ...entity,
+                shapes: {
+                    ...entity.shapes,
+                    [shapeId]: newShape
+                }
+            };
+
+            const newEntities = {
+                ...state.entities,
+                [entityId]: updatedEntity
+            };
+
+            // Update lookups efficiently
             const newEntityLookup = new Map(state.entityLookup);
             newEntityLookup.set(entityId, updatedEntity);
 

@@ -24,9 +24,11 @@ export const useShapeInteractions = () => {
 
     // Use refs to track interaction state without triggering renders
     const isDraggingPointRef = useRef(false);
-    const dragStartPositionRef = useRef<Point | null>(null);
-    const dragUpdateCountRef = useRef(0);
-    const lastDragTimeRef = useRef(0);
+    const dragStartWorldPositionRef = useRef<Point | null>(null);
+    const draggedPointRef = useRef<Konva.Circle | null>(null);
+    const draggedShapeRef = useRef<Konva.Line | null>(null);
+    const originalPointsRef = useRef<Point[] | null>(null);
+    const currentDragPositionRef = useRef<Point | null>(null);
 
     // Handle point click - when user clicks on a point
     const handlePointClick = useCallback((
@@ -72,18 +74,28 @@ export const useShapeInteractions = () => {
     ) => {
         // Mark as dragging to prevent click handlers from firing
         isDraggingPointRef.current = true;
-        dragUpdateCountRef.current = 0;
-        lastDragTimeRef.current = Date.now();
 
-        // Store the initial position of the point in stage coordinates
-        const shape = e.target;
-        if (shape && shape.getStage()) {
-            // Get the initial absolute position
-            const initialPos = shape.absolutePosition();
-            dragStartPositionRef.current = {
-                x: initialPos.x,
-                y: initialPos.y
-            };
+        // Store references to the dragged elements
+        draggedPointRef.current = e.target as Konva.Circle;
+
+        // Find the parent shape (Line) - need to look through Group now
+        const parent = e.target.getParent();
+        if (parent) {
+            // Find the shape line in the parent group
+            const children = parent.getChildren();
+            for (const child of children) {
+                if (child instanceof Konva.Line) {
+                    draggedShapeRef.current = child as Konva.Line;
+                    break;
+                }
+            }
+        }
+
+        // Get the current shape data and store original points
+        const shape = state.shapeLookup.get(shapeId)?.shape;
+        if (shape && 'points' in shape && Array.isArray(shape.points)) {
+            originalPointsRef.current = [...shape.points];
+            dragStartWorldPositionRef.current = { ...shape.points[pointIndex] };
         }
 
         // Make sure this point is selected
@@ -98,9 +110,12 @@ export const useShapeInteractions = () => {
                 pointIndex
             });
         }
-    }, [selectedEntityId, selectedShapeId, selectedPointIndex, updateSelectedEntitiesIds]);
 
-    // Handle point drag with protection against infinite updates
+        // Prevent default Konva dragging behavior
+        e.evt.preventDefault();
+    }, [selectedEntityId, selectedShapeId, selectedPointIndex, updateSelectedEntitiesIds, state.shapeLookup]);
+
+    // Handle point drag with optimistic updates (no Redux dispatching during drag)
     const handlePointDrag = useCallback((
         entityId: string,
         shapeId: string,
@@ -108,70 +123,58 @@ export const useShapeInteractions = () => {
         e: Konva.KonvaEventObject<DragEvent>
     ) => {
         // Skip if we don't have necessary objects
-        if (!e.target || !e.target.getStage()) return;
+        if (!e.target || !e.target.getStage() || !originalPointsRef.current) return;
 
-        // Throttle updates to prevent excessive re-renders
-        const now = Date.now();
-        if (now - lastDragTimeRef.current < 16) { // ~60fps
-            return;
-        }
-        lastDragTimeRef.current = now;
-
-        // Count updates to detect potential infinite loops
-        dragUpdateCountRef.current++;
-        if (dragUpdateCountRef.current > 1000) {
-            console.warn('Too many drag updates in a single operation - stopping to prevent infinite loop');
-            return;
-        }
-
-        // Get the stage
+        // Get the stage and pointer position
         const stage = e.target.getStage();
+        const pointerPos = stage.getPointerPosition();
 
-        // Get point position in stage coordinates
-        const pointPos = e.target.absolutePosition();
+        if (!pointerPos) return;
 
-        // Convert to world coordinates using the current transform
-        const stageAttrs = stage?.attrs;
-        const scaleX = stageAttrs.scaleX || 1;
-        const scaleY = stageAttrs.scaleY || 1;
-        const stageX = stageAttrs.x || 0;
-        const stageY = stageAttrs.y || 0;
-
-        const worldX = (pointPos.x - stageX) / scaleX;
-        const worldY = (pointPos.y - stageY) / scaleY;
+        // Convert stage coordinates to world coordinates
+        const worldPos = viewportToWorld(pointerPos.x, pointerPos.y, position, scale);
 
         // Round to prevent floating point errors
         const roundedPos = {
-            x: Math.round(worldX * 100) / 100,
-            y: Math.round(worldY * 100) / 100
+            x: Math.round(worldPos.x * 100) / 100,
+            y: Math.round(worldPos.y * 100) / 100
         };
 
-        // Only update if the position has changed significantly
-        if (dragStartPositionRef.current) {
-            const dx = Math.abs(roundedPos.x - dragStartPositionRef.current.x);
-            const dy = Math.abs(roundedPos.y - dragStartPositionRef.current.y);
+        // Store current drag position
+        currentDragPositionRef.current = roundedPos;
 
-            if (dx < 0.5 && dy < 0.5) {
-                return; // Too small a movement
-            }
+        // **OPTIMISTIC UPDATE**: Update the canvas directly without Redux
+        // This gives us immediate, smooth visual feedback
+
+        // Update the dragged point position immediately
+        if (draggedPointRef.current) {
+            draggedPointRef.current.setAttrs({
+                x: roundedPos.x,
+                y: roundedPos.y
+            });
         }
 
-        // Update state
-        dispatch({
-            type: 'MOVE_POINT',
-            payload: {
-                entityId,
-                shapeId,
-                pointIndex,
-                newPosition: roundedPos,
-            },
-        });
+        // Update the shape lines immediately
+        if (draggedShapeRef.current && originalPointsRef.current) {
+            const newPoints = [...originalPointsRef.current];
+            newPoints[pointIndex] = roundedPos;
 
-        // Update the drag start position
-        dragStartPositionRef.current = roundedPos;
-    }, [dispatch]);
+            // Convert points to flat array for Konva
+            const flatPoints = newPoints.flatMap(p => [p.x, p.y]);
+            draggedShapeRef.current.setAttrs({
+                points: flatPoints
+            });
+        }
 
-    // Handle point drag end
+        // Force immediate redraw of the layer
+        const layer = e.target.getLayer();
+        if (layer) {
+            layer.batchDraw();
+        }
+
+    }, [position, scale]);
+
+    // Handle point drag end - sync with Redux state
     const handlePointDragEnd = useCallback((
         entityId: string,
         shapeId: string,
@@ -180,49 +183,62 @@ export const useShapeInteractions = () => {
     ) => {
         // Reset dragging state
         isDraggingPointRef.current = false;
-        dragStartPositionRef.current = null;
-        dragUpdateCountRef.current = 0;
 
-        // Get final position to ensure state is updated with the final position
-        if (e.target && e.target.getStage()) {
-            const stage = e.target.getStage();
-            const stagePoint = e.target.absolutePosition();
+        // Get final position
+        const finalPosition = currentDragPositionRef.current || dragStartWorldPositionRef.current;
 
-            // Convert stage coordinates to world coordinates
-            const stageAttrs = stage?.attrs;
-            const scaleX = stageAttrs.scaleX || 1;
-            const scaleY = stageAttrs.scaleY || 1;
-            const stageX = stageAttrs.x || 0;
-            const stageY = stageAttrs.y || 0;
-
-            const worldX = (stagePoint.x - stageX) / scaleX;
-            const worldY = (stagePoint.y - stageY) / scaleY;
-
-            // Round to prevent floating point errors
-            const roundedPos = {
-                x: Math.round(worldX * 100) / 100,
-                y: Math.round(worldY * 100) / 100
-            };
-
-            // Final update to state
+        if (finalPosition) {
+            // **SYNC WITH REDUX**: Now update the actual state
             dispatch({
                 type: 'MOVE_POINT',
                 payload: {
                     entityId,
                     shapeId,
                     pointIndex,
-                    newPosition: roundedPos,
+                    newPosition: finalPosition,
+                },
+            });
+        }
+
+        // Clean up refs
+        draggedPointRef.current = null;
+        draggedShapeRef.current = null;
+        originalPointsRef.current = null;
+        dragStartWorldPositionRef.current = null;
+        currentDragPositionRef.current = null;
+    }, [dispatch]);
+
+    // Handle shape drag end (for Group-based dragging)
+    const handleShapeDragEnd = useCallback((
+        entityId: string,
+        shapeId: string,
+        e: KonvaEventObject<DragEvent>
+    ) => {
+        const group = e.target;
+        const offset = {
+            x: group.x(),
+            y: group.y()
+        };
+
+        // Only dispatch if there was actual movement
+        if (Math.abs(offset.x) > 0.01 || Math.abs(offset.y) > 0.01) {
+            dispatch({
+                type: 'MOVE_SHAPE',
+                payload: {
+                    entityId,
+                    shapeId,
+                    offset,
                 },
             });
         }
     }, [dispatch]);
 
-    // Handle shape line click for adding new points - with better coordinate handling
+    // Handle shape line click for adding new points
     const handleLineClick = useCallback((
         entityId: string,
         shapeId: string,
         startPointIndex: number,
-        e: KonvaEventObject<MouseEvent>
+        e: Konva.KonvaEventObject<MouseEvent>
     ) => {
         if (mode !== EditMode.ADD_POINT) return;
 
@@ -276,12 +292,12 @@ export const useShapeInteractions = () => {
         });
     }, [updateSelectedEntitiesIds]);
 
-    // Optimized function to find a shape at a point using spatial index (for Phase 2)
+    // Optimized function to find a shape at a point
     const findShapeAtPoint = useCallback((x: number, y: number): { entityId: string, shapeId: string } | null => {
         // Convert viewport coordinates to world coordinates
         const worldPos = viewportToWorld(x, y, position, scale);
 
-        // Check each entity/shape - in phase 2 this will use spatial index
+        // Check each entity/shape
         for (const [entityId, entity] of Object.entries(state.entities)) {
             if (!entity.visible) continue;
 
@@ -300,12 +316,12 @@ export const useShapeInteractions = () => {
         return null;
     }, [state.entities, position, scale, getBoundingBox]);
 
-
     return {
         handlePointClick,
         handlePointDragStart,
         handlePointDrag,
         handlePointDragEnd,
+        handleShapeDragEnd,
         handleLineClick,
         handleShapeClick,
         findShapeAtPoint,
