@@ -341,19 +341,19 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
         case 'DELETE_POINT': {
             const { entityId, shapeId, pointIndex } = action.payload;
             const shapeInfo = state.shapeLookup.get(shapeId);
-
-            if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
+            if (!pointIndex || !shapeInfo || shapeInfo.entityId !== entityId) return state;
 
             const shape = shapeInfo.shape;
-            if (shape.shapeType !== 'polygon' && shape.shapeType !== 'line') {
+            const shapeType = shape.shapeType;
+
+            if (shapeType !== 'polygon' && shapeType !== 'line') {
                 return state;
             }
 
-            if (shape.shapeType === 'polygon') {
+            if (shapeType === 'polygon') {
                 const polygonShape = shape as PolygonShape;
-                if (polygonShape.points.length <= 3) return state;
-                if (pointIndex < 0 || pointIndex >= polygonShape.points.length) {
-                    return state;
+                if (polygonShape.points.length <= 3 || pointIndex >= polygonShape.points.length) {
+                    return state
                 }
 
                 const newPoints = [...polygonShape.points];
@@ -396,6 +396,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
         case 'MOVE_POINT': {
             const { entityId, shapeId, pointIndex, newPosition } = action.payload;
 
+            debugger
             const shapeInfo = state.shapeLookup.get(shapeId);
             if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
 
@@ -404,7 +405,8 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
-            if (!validateCoordinates(newPosition)) {
+            const newPoint = newPosition(shape.points[pointIndex]);
+            if (!validateCoordinates(newPoint)) {
                 return state;
             }
 
@@ -420,13 +422,13 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             }
 
             const currentPoint = currentPoints[pointIndex];
-            if (arePointsEqual(currentPoint, newPosition)) {
+            if (arePointsEqual(currentPoint, newPoint)) {
                 return state;
             }
 
             // Create new points array with the updated point
             const newPoints = [...currentPoints];
-            newPoints[pointIndex] = roundCoordinates(newPosition);
+            newPoints[pointIndex] = roundCoordinates(newPoint);
 
             // Create new shape object
             const newShape = {

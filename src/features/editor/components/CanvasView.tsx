@@ -136,9 +136,9 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
         scaleY: scale,
         x: position.x,
         y: position.y,
-        draggable: false,
+        draggable: true,
         onWheel: handleWheel,
-        onMouseDown: handleCanvasMouseDown,
+        // onMouseDown: handleCanvasMouseDown,
         onMouseMove: handleCanvasMouseMove,
         onMouseUp: handleCanvasMouseUp,
         onClick: handleCanvasClick,
@@ -185,12 +185,12 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
     return (
         <div
             className={`${classNames.container.canvas} ${getCursorClass}`}
-            style={{ width, height, position: 'relative' }}
+            style={{width, height, position: 'relative'}}
         >
             <Stage ref={stageRef} {...stageProps}>
                 <Layer>
                     {/*<GridRenderer width={width} height={height} />*/}
-                    <BackgroundRenderer />
+                    <BackgroundRenderer/>
                     {renderedEntities}
                 </Layer>
             </Stage>
@@ -200,7 +200,7 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
                 onToggle={toggleShapeMetrics}
             />
 
-            <CoordinateDisplay pointerPos={stageRef.current?.pointerPos} />
+            <CoordinateDisplay pointerPos={stageRef.current?.pointerPos}/>
         </div>
     );
 });

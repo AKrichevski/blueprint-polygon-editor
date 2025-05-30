@@ -13,7 +13,7 @@ export type EditorAction =
     | { type: 'DELETE_SHAPE'; payload: { entityId: string; shapeId: string } }
     | { type: 'ADD_POINT'; payload: { entityId: string; shapeId: string; point: Point; index: number } }
     | { type: 'DELETE_POINT'; payload: { entityId: string; shapeId: string; pointIndex: number } }
-    | { type: 'MOVE_POINT'; payload: { entityId: string; shapeId: string; pointIndex: number; newPosition: Point } }
+    | { type: 'MOVE_POINT'; payload: { entityId: string; shapeId: string; pointIndex: number; newPosition: (point: Point) => Point } }
     | { type: 'MOVE_SHAPE'; payload: { entityId: string; shapeId: string; offset: Point } } // NEW ACTION
     | { type: 'BATCH_IMPORT_ENTITIES'; payload: Record<string, Entity> }
     | { type: 'BATCH_UPDATE_SHAPES'; payload: { entityId: string; shapes: Record<string, GeometricShape> } }

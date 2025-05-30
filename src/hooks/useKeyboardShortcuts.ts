@@ -60,8 +60,7 @@ export function useKeyboardShortcuts() {
 
             // Zoom shortcuts
             {
-                key: '=',
-                ctrl: true,
+                key: '+',
                 description: 'Zoom in',
                 action: () => {
                     updateScale("zoom-in")
@@ -69,7 +68,6 @@ export function useKeyboardShortcuts() {
             },
             {
                 key: '-',
-                ctrl: true,
                 description: 'Zoom out',
                 action: () => {
                     updateScale("zoom-out")
@@ -77,7 +75,6 @@ export function useKeyboardShortcuts() {
             },
             {
                 key: '0',
-                ctrl: true,
                 description: 'Reset zoom and position',
                 action: () => {
                     updateScale("reset")
@@ -90,26 +87,14 @@ export function useKeyboardShortcuts() {
                 key: 'Delete',
                 description: 'Delete selected point (if polygon has >3 points)',
                 action: () => {
-                    // If a point is selected and we have enough points
-                    if (
-                        selectedEntityId &&
-                        selectedShapeId &&
-                        selectedPointIndex !== null
-                    ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
-
-                        if (polygon && polygon.points.length > 3) {
-                            dispatch({
-                                type: 'DELETE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                },
-                            });
-                        }
-                    }
+                    dispatch({
+                        type: 'DELETE_POINT',
+                        payload: {
+                            entityId: selectedEntityId,
+                            shapeId: selectedShapeId,
+                            pointIndex: selectedPointIndex,
+                        },
+                    });
                 },
             },
 
@@ -118,14 +103,15 @@ export function useKeyboardShortcuts() {
                 key: 'Escape',
                 description: 'Cancel current operation or deselect',
                 action: () => {
+                    debugger
                     if (mode !== EditMode.SELECT) {
                         // First switch back to select mode
                         updateMode(EditMode.SELECT)
                     } else if (selectedPointIndex !== null) {
                         // Then deselect point
-                        updateSelectedEntitiesIds({pointIndex: selectedPointIndex})
+                        updateSelectedEntitiesIds({pointIndex: null})
                     } else if (selectedShapeId) {
-                        updateSelectedEntitiesIds({shapeId: selectedPointIndex})
+                        updateSelectedEntitiesIds({shapeId: null})
                         // Then deselect polygon
                     }
                 },
@@ -193,66 +179,8 @@ export function useKeyboardShortcuts() {
                 },
             },
             {
-                key: 'ArrowUp',
-                description: 'Move selected point up',
-                action: () => {
-                    // Move the selected point
-                    if (
-                        selectedEntityId &&
-                        selectedShapeId &&
-                        selectedPointIndex !== null
-                    ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedPolygonId);
-
-                        if (polygon) {
-                            const point = polygon.points[selectedPointIndex];
-                            const newPos = {...point, y: point.y - 1};
-
-                            dispatch({
-                                type: 'MOVE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                    newPosition: newPos,
-                                },
-                            });
-                        }
-                    }
-                },
-            },
-            {
-                key: 'ArrowDown',
-                description: 'Move selected point down',
-                action: () => {
-                    if (
-                        selectedEntityId &&
-                        selectedShapeId &&
-                        selectedPointIndex !== null
-                    ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
-
-                        if (polygon) {
-                            const point = polygon.points[selectedPointIndex];
-                            const newPos = {...point, y: point.y + 1};
-
-                            dispatch({
-                                type: 'MOVE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                    newPosition: newPos,
-                                },
-                            });
-                        }
-                    }
-                },
-            },
-            {
                 key: 'ArrowLeft',
+                ctrl: true,
                 description: 'Move selected point left',
                 action: () => {
                     if (
@@ -260,28 +188,23 @@ export function useKeyboardShortcuts() {
                         selectedShapeId &&
                         selectedPointIndex !== null
                     ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
+                        const newPos = (point) => ({y: point.y, x: point.x - 1});
 
-                        if (polygon) {
-                            const point = polygon.points[selectedPointIndex];
-                            const newPos = {...point, x: point.x - 1};
-
-                            dispatch({
-                                type: 'MOVE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                    newPosition: newPos,
-                                },
-                            });
-                        }
+                        dispatch({
+                            type: 'MOVE_POINT',
+                            payload: {
+                                entityId: selectedEntityId,
+                                shapeId: selectedShapeId,
+                                pointIndex: selectedPointIndex,
+                                newPosition: newPos,
+                            },
+                        });
                     }
                 },
             },
             {
                 key: 'ArrowRight',
+                ctrl: true,
                 description: 'Move selected point right',
                 action: () => {
                     if (
@@ -289,29 +212,22 @@ export function useKeyboardShortcuts() {
                         selectedShapeId &&
                         selectedPointIndex !== null
                     ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
-
-                        if (polygon) {
-                            const point = polygon.points[selectedPointIndex];
-                            const newPos = {...point, x: point.x + 1};
-                            //
-                            dispatch({
-                                type: 'MOVE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                    newPosition: newPos,
-                                },
-                            });
-                        }
+                        const newPos = (point) => ({y: point.y, x: point.x + 1});
+                        dispatch({
+                            type: 'MOVE_POINT',
+                            payload: {
+                                entityId: selectedEntityId,
+                                shapeId: selectedShapeId,
+                                pointIndex: selectedPointIndex,
+                                newPosition: newPos,
+                            },
+                        });
                     }
                 },
             },
             {
                 key: 'ArrowUp',
-                shift: true,
+                ctrl: true,
                 description: 'Move selected point up by 10px',
                 action: () => {
                     if (
@@ -319,29 +235,22 @@ export function useKeyboardShortcuts() {
                         selectedShapeId &&
                         selectedPointIndex !== null
                     ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
-
-                        if (polygon) {
-                            const point = polygon.points[selectedPointIndex];
-                            const newPos = {...point, y: point.y - 10};
-
-                            dispatch({
-                                type: 'MOVE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                    newPosition: newPos,
-                                },
-                            });
-                        }
+                        const newPos = (point) => ({y: point.y - 1, x: point.x});
+                        dispatch({
+                            type: 'MOVE_POINT',
+                            payload: {
+                                entityId: selectedEntityId,
+                                shapeId: selectedShapeId,
+                                pointIndex: selectedPointIndex,
+                                newPosition: newPos,
+                            },
+                        });
                     }
                 },
             },
             {
                 key: 'ArrowDown',
-                shift: true,
+                ctrl: true,
                 description: 'Move selected point down by 10px',
                 action: () => {
                     if (
@@ -349,88 +258,21 @@ export function useKeyboardShortcuts() {
                         selectedShapeId &&
                         selectedPointIndex !== null
                     ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
-
-                        if (polygon) {
-                            const point = polygon.points[selectedPointIndex];
-                            const newPos = {...point, y: point.y + 10};
-
-                            dispatch({
-                                type: 'MOVE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                    newPosition: newPos,
-                                },
-                            });
-                        }
-                    }
-                },
-            },
-            {
-                key: 'ArrowLeft',
-                shift: true,
-                description: 'Move selected point left by 10px',
-                action: () => {
-                    if (
-                        selectedEntityId &&
-                        selectedShapeId &&
-                        selectedPointIndex !== null
-                    ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
-
-                        if (polygon) {
-                            const point = polygon.points[selectedPointIndex];
-                            const newPos = {...point, x: point.x - 10};
-
-                            dispatch({
-                                type: 'MOVE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                    newPosition: newPos,
-                                },
-                            });
-                        }
-                    }
-                },
-            },
-            {
-                key: 'ArrowRight',
-                shift: true,
-                description: 'Move selected point right by 10px',
-                action: () => {
-                    if (
-                        selectedEntityId &&
-                        selectedShapeId &&
-                        selectedPointIndex !== null
-                    ) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
-
-                        if (polygon) {
-                            const point = polygon.points[selectedPointIndex];
-                            const newPos = {...point, x: point.x + 10};
-
-                            dispatch({
-                                type: 'MOVE_POINT',
-                                payload: {
-                                    entityId: selectedEntityId,
-                                    polygonId: selectedShapeId,
-                                    pointIndex: selectedPointIndex,
-                                    newPosition: newPos,
-                                },
-                            });
-                        }
+                        const newPos = (point) => ({y: point.y + 1, x: point.x});
+                        dispatch({
+                            type: 'MOVE_POINT',
+                            payload: {
+                                entityId: selectedEntityId,
+                                shapeId: selectedShapeId,
+                                pointIndex: selectedPointIndex,
+                                newPosition: newPos,
+                            },
+                        });
                     }
                 },
             },
         ];
-    }, [state, dispatch]);
+    }, [state, dispatch, selectedEntityId, selectedShapeId, selectedPointIndex, scale, mode]);
 
     // Register keyboard shortcuts
     useEffect(() => {

@@ -24,6 +24,7 @@ import {
     STORAGE_KEY
 } from "../../consts";
 import type {BoundingBox, GeometricShape} from "../../types";
+import Konva from "konva";
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
@@ -101,7 +102,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 setSelectedPointIndex(pointIndex);
                 hasChanges = true;
             }
-
+            // e &&  e.evt.stopPropagation();
             return hasChanges;
         },
         [selectedEntityId, selectedShapeId, selectedPointIndex]
