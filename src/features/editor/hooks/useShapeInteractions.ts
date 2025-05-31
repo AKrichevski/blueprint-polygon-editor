@@ -40,11 +40,6 @@ export const useShapeInteractions = () => {
         shapeId: string,
         pointIndex: number
     ) => {
-        // Prevent clicking while dragging
-        if (isDraggingPointRef.current) {
-            return;
-        }
-
         if (mode === EditMode.SELECT) {
             updateSelectedEntitiesIds({
                 entityId,
@@ -76,9 +71,6 @@ export const useShapeInteractions = () => {
         pointIndex: number,
         e: KonvaEventObject<DragEvent>
     ) => {
-        if(selectedShapeIds.size > 1) {
-            return
-        }
         // Mark as dragging to prevent click handlers from firing
         isDraggingPointRef.current = true;
 
@@ -130,7 +122,7 @@ export const useShapeInteractions = () => {
         e: Konva.KonvaEventObject<DragEvent>
     ) => {
         // Skip if we don't have necessary objects
-        if (!e.target || !e.target.getStage() || !originalPointsRef.current || selectedShapeIds.size > 1) return;
+        if (!e.target || !e.target.getStage() || !originalPointsRef.current) return;
 
         // Get the stage and pointer position
         const stage = e.target.getStage();
@@ -184,9 +176,6 @@ export const useShapeInteractions = () => {
         pointIndex: number,
         e: Konva.KonvaEventObject<DragEvent>
     ) => {
-        if (selectedShapeIds.size > 1) {
-            return
-        }
         // Reset dragging state
         isDraggingPointRef.current = false;
 
@@ -220,9 +209,6 @@ export const useShapeInteractions = () => {
         shapeId: string,
         e: KonvaEventObject<DragEvent>
     ) => {
-        if (selectedShapeIds.size > 1) {
-            return
-        }
         const group = e.target;
         const offset = {
             x: group.x(),
@@ -290,11 +276,6 @@ export const useShapeInteractions = () => {
         shapeId: string,
         e?: Konva.KonvaEventObject<MouseEvent>
     ) => {
-        // Prevent clicks while dragging
-        if (isDraggingPointRef.current) {
-            return;
-        }
-
         // Close any open context menu first
         closeContextMenu();
 
