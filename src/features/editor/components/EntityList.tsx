@@ -78,8 +78,8 @@ const EntityList: React.FC = () => {
     };
 
     return (
-        <div className="bg-white rounded-lg shadow p-3">
-            <div className="flex justify-between items-center mb-4" onClick={() => setExpandedPanel(prev => !prev)}>
+        <div className="bg-white rounded-lg shadow p-1">
+            <div className="flex justify-between items-center mb-1" onClick={() => setExpandedPanel(prev => !prev)}>
                 <h2 className="text-lg font-semibold">Layers</h2>
                 <button
                     className="bg-blue-500 text-white px-3 py-1 rounded text-sm"

@@ -1,5 +1,5 @@
 // @ts-nocheck
-// src/contexts/editor/EditorContextProvider.tsx
+// src/contexts/editor/EditorContextProvider.tsx - Enhanced multi-select section
 import React, {
     createContext,
     useReducer,
@@ -12,9 +12,9 @@ import React, {
 } from 'react';
 import { editorReducer, createOptimizedLookups } from './EditorReducer';
 import { processImportData, formatExportData } from './EditorImportExport';
-import type {EditorAction, EditorContextType} from "./EditorContextTypes";
-import {safeLocalStorageSave, batchActions} from "./EditorUtils";
-import {calculateBoundingBox} from "../../utils/geometryUtils.ts";
+import type { EditorAction, EditorContextType, ContextMenuState } from "./EditorContextTypes";
+import { safeLocalStorageSave, batchActions } from "./EditorUtils";
+import { calculateBoundingBox } from "../../utils/geometryUtils";
 import {
     EditMode,
     initialEditorState,
@@ -23,16 +23,16 @@ import {
     POSITION_EPSILON,
     STORAGE_KEY
 } from "../../consts";
-import type {BoundingBox, GeometricShape} from "../../types";
-import Konva from "konva";
+import type { BoundingBox, GeometricShape } from "../../types";
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
 export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    // Enhanced initial state with bounding box cache
+    // Enhanced initial state with multi-selection support
     const [state, dispatch] = useReducer(editorReducer, {
         ...initialEditorState,
-        boundingBoxCache: new Map<string, BoundingBox>()
+        boundingBoxCache: new Map<string, BoundingBox>(),
+        selectedShapeIds: new Set<string>()
     });
 
     const [isLoading, setIsLoading] = useState(true);
@@ -41,71 +41,184 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
     const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
     const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
+    const [selectedShapeIds, setSelectedShapeIds] = useState<Set<string>>(new Set());
+    const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
+
+    // NEW: Context menu state
+    const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+        isOpen: false,
+        position: { x: 0, y: 0 },
+        selectedShapeIds: new Set(),
+        selectedEntityId: null
+    });
 
     // Performance tracking
     const lastUpdateTimeRef = useRef(0);
     const autoSaveTimeoutRef = useRef<number | null>(null);
-    const storageWarningShownRef = useRef(false);
-
-    // Batch update queue for better performance
     const updateQueueRef = useRef<EditorAction[]>([]);
     const updateTimeoutRef = useRef<number | null>(null);
 
-    // Update all lookups when entities change (already optimized in reducer)
+    // ENHANCED: Track CTRL key state for multi-select mode
     useEffect(() => {
-        if (state.entities && Object.keys(state.entities).length > 0) {
-            // Lookups are already updated in the reducer, no need to recalculate
-            return;
-        }
-    }, [state.entities]);
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey || e.metaKey) {
+                setIsMultiSelectMode(true);
+            }
+        };
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (!e.ctrlKey && !e.metaKey) {
+                setIsMultiSelectMode(false);
+            }
+        };
+
+        const handleWindowBlur = () => {
+            setIsMultiSelectMode(false);
+        };
+
+        // Handle escape key to clear selection
+        const handleEscapeKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                dispatch({ type: 'CLEAR_SELECTION' });
+                setSelectedEntityId(null);
+                setSelectedShapeId(null);
+                setSelectedPointIndex(null);
+                setContextMenu(prev => ({ ...prev, isOpen: false }));
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        window.addEventListener('blur', handleWindowBlur);
+        document.addEventListener('keydown', handleEscapeKey);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+            window.removeEventListener('blur', handleWindowBlur);
+            document.removeEventListener('keydown', handleEscapeKey);
+        };
+    }, []);
+
+    // Sync selectedShapeIds state with reducer state
+    useEffect(() => {
+        setSelectedShapeIds(state.selectedShapeIds);
+    }, [state.selectedShapeIds]);
 
     const updateMode = useCallback((newMode: EditMode) => {
         if (newMode !== mode) {
             setMode(newMode);
+            // Clear multi-selection when changing modes (except SELECT mode)
+            if (newMode !== EditMode.SELECT) {
+                dispatch({ type: 'CLEAR_SELECTION' });
+                setContextMenu(prev => ({ ...prev, isOpen: false }));
+            }
         }
     }, [mode]);
 
+    // ENHANCED: Multi-selection handler with better entity validation
     const updateSelectedEntitiesIds = useCallback(
         ({
              entityId,
              shapeId,
              pointIndex,
-             action = "update"
+             multiSelect = false,
+             clearSelection = false,
          }: {
             entityId?: string;
             shapeId?: string;
             pointIndex?: number;
-            action?: string;
-        }) => {
-            // Batch selection updates to avoid multiple renders
+            multiSelect?: boolean;
+            clearSelection?: boolean;
+        }): boolean => {
             let hasChanges = false;
 
+            // Handle clear selection
+            if (clearSelection) {
+                dispatch({ type: 'CLEAR_SELECTION' });
+                setSelectedEntityId(null);
+                setSelectedShapeId(null);
+                setSelectedPointIndex(null);
+                setContextMenu(prev => ({ ...prev, isOpen: false }));
+                return true;
+            }
+
+            // ENHANCED: Handle shape selection with multi-select support
+            if (shapeId !== undefined) {
+                // Get entity of the clicked shape using lookup map for O(1) performance
+                const clickedShapeInfo = state.shapeLookup.get(shapeId);
+                if (!clickedShapeInfo) {
+                    console.warn(`Shape ${shapeId} not found in lookup`);
+                    return false;
+                }
+
+                const clickedEntityId = clickedShapeInfo.entityId;
+
+                // Check multi-select constraints
+                if (multiSelect && isMultiSelectMode && selectedShapeIds.size > 0) {
+                    // Ensure all selections are from the same entity
+                    if (selectedEntityId && clickedEntityId !== selectedEntityId) {
+                        // Show alert and don't proceed with selection
+                        alert("You can only select shapes from the same entity!");
+                        return false;
+                    }
+
+                    // Toggle selection
+                    if (selectedShapeIds.has(shapeId)) {
+                        dispatch({ type: 'REMOVE_FROM_SELECTION', payload: shapeId });
+                    } else {
+                        dispatch({ type: 'ADD_TO_SELECTION', payload: shapeId });
+                    }
+
+                    setSelectedShapeId(shapeId);
+                    if (!selectedEntityId) {
+                        setSelectedEntityId(clickedEntityId);
+                    }
+                    hasChanges = true;
+                } else {
+                    // Single select mode - clear previous selections
+                    const newSelection = new Set([shapeId]);
+                    dispatch({ type: 'SET_SELECTED_SHAPES', payload: newSelection });
+                    setSelectedShapeId(shapeId);
+                    setSelectedEntityId(clickedEntityId);
+                    hasChanges = true;
+                }
+
+                // Clear point selection when selecting shapes
+                if (pointIndex === undefined) {
+                    setSelectedPointIndex(null);
+                }
+            }
+
+            // Handle entity selection
             if (entityId !== undefined && selectedEntityId !== entityId) {
                 setSelectedEntityId(entityId ?? null);
                 hasChanges = true;
                 if (entityId === null) {
                     setSelectedShapeId(null);
                     setSelectedPointIndex(null);
+                    dispatch({ type: 'CLEAR_SELECTION' });
                 }
             }
 
-            if (shapeId !== undefined && selectedShapeId !== shapeId) {
-                setSelectedShapeId(shapeId);
-                hasChanges = true;
-                if (shapeId === null) {
-                    setSelectedPointIndex(null);
-                }
-            }
-
+            // Handle point selection
             if (pointIndex !== undefined && selectedPointIndex !== pointIndex) {
                 setSelectedPointIndex(pointIndex);
                 hasChanges = true;
             }
-            // e &&  e.evt.stopPropagation();
+
             return hasChanges;
         },
-        [selectedEntityId, selectedShapeId, selectedPointIndex]
+        [
+            selectedEntityId,
+            selectedShapeId,
+            selectedPointIndex,
+            selectedShapeIds,
+            isMultiSelectMode,
+            state.shapeLookup,
+            dispatch
+        ]
     );
 
     const updatePosition = useCallback((x: number, y: number) => {
@@ -183,6 +296,79 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         lastUpdateTimeRef.current = now;
     }, [batchedDispatch]);
+
+    // ENHANCED: Context menu functions with better state management
+    const openContextMenu = useCallback((
+        position: { x: number; y: number },
+        shapeIds: Set<string>,
+        entityId: string
+    ) => {
+        // Validate that all shapes belong to the same entity
+        const validShapeIds = new Set<string>();
+        for (const shapeId of shapeIds) {
+            const shapeInfo = state.shapeLookup.get(shapeId);
+            if (shapeInfo && shapeInfo.entityId === entityId) {
+                validShapeIds.add(shapeId);
+            }
+        }
+
+        if (validShapeIds.size === 0) {
+            console.warn('No valid shapes for context menu');
+            return;
+        }
+
+        setContextMenu({
+            isOpen: true,
+            position,
+            selectedShapeIds: validShapeIds,
+            selectedEntityId: entityId
+        });
+    }, [state.shapeLookup]);
+
+    const closeContextMenu = useCallback(() => {
+        setContextMenu(prev => ({ ...prev, isOpen: false }));
+    }, []);
+
+    const moveShapesToEntity = useCallback((
+        fromEntityId: string,
+        toEntityId: string,
+        shapeIds: string[]
+    ) => {
+        // Validate entities exist
+        const fromEntity = state.entityLookup.get(fromEntityId);
+        const toEntity = state.entityLookup.get(toEntityId);
+
+        if (!fromEntity || !toEntity) {
+            console.error('Invalid entity IDs for move operation');
+            return;
+        }
+
+        // Validate all shapes belong to the from entity
+        const validShapeIds = shapeIds.filter(shapeId => {
+            const shapeInfo = state.shapeLookup.get(shapeId);
+            return shapeInfo && shapeInfo.entityId === fromEntityId;
+        });
+
+        if (validShapeIds.length === 0) {
+            console.warn('No valid shapes to move');
+            return;
+        }
+
+        dispatch({
+            type: 'MOVE_SHAPES_TO_ENTITY',
+            payload: {
+                fromEntityId,
+                toEntityId,
+                shapeIds: validShapeIds
+            }
+        });
+
+        closeContextMenu();
+
+        // Update local selections to reflect the move
+        setSelectedEntityId(toEntityId);
+        dispatch({ type: 'CLEAR_SELECTION' });
+    }, [dispatch, closeContextMenu, state.entityLookup, state.shapeLookup]);
 
     // Load from localStorage
     useEffect(() => {
@@ -275,28 +461,187 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return calculateBoundingBox(shape);
     }, []);
 
-    // Memoized context value
+    // ENHANCED: Handle context menu click outside detection
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (contextMenu.isOpen) {
+                // Check if click was outside the context menu
+                const target = e.target as Element;
+                if (!target.closest('[role="menu"]') &&
+                    !target.closest('[data-mui-context-menu]')) {
+                    closeContextMenu();
+                }
+            }
+        };
+
+        // Handle escape key to close context menu
+        const handleEscapeKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && contextMenu.isOpen) {
+                closeContextMenu();
+            }
+        };
+
+        if (contextMenu.isOpen) {
+            // Add slight delay to prevent immediate closure
+            const timeoutId = setTimeout(() => {
+                document.addEventListener('click', handleClickOutside);
+                document.addEventListener('keydown', handleEscapeKey);
+            }, 100);
+
+            return () => {
+                clearTimeout(timeoutId);
+                document.removeEventListener('click', handleClickOutside);
+                document.removeEventListener('keydown', handleEscapeKey);
+            };
+        }
+    }, [contextMenu.isOpen, closeContextMenu]);
+
+    // ENHANCED: Auto-close context menu when selection changes
+    useEffect(() => {
+        if (contextMenu.isOpen) {
+            // If the selected shapes change significantly, close context menu
+            const contextShapeIds = Array.from(contextMenu.selectedShapeIds);
+            const currentShapeIds = Array.from(selectedShapeIds);
+
+            // Check if context menu shapes are still selected
+            const stillSelected = contextShapeIds.every(id => currentShapeIds.includes(id));
+
+            if (!stillSelected) {
+                closeContextMenu();
+            }
+        }
+    }, [selectedShapeIds, contextMenu, closeContextMenu]);
+
+    // ENHANCED: Performance monitoring and debugging
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'development') {
+            const logPerformance = () => {
+                const entityCount = Object.keys(state.entities).length;
+                const totalShapes = Object.values(state.entities).reduce(
+                    (total, entity) => total + Object.keys(entity.shapes || {}).length,
+                    0
+                );
+                const selectedCount = selectedShapeIds.size;
+
+                console.debug('Editor Performance:', {
+                    entities: entityCount,
+                    totalShapes,
+                    selectedShapes: selectedCount,
+                    multiSelectMode: isMultiSelectMode,
+                    boundingBoxCacheSize: state.boundingBoxCache.size,
+                    shapeLookupSize: state.shapeLookup.size
+                });
+            };
+
+            // Log performance every 10 seconds in development
+            const interval = setInterval(logPerformance, 10000);
+            return () => clearInterval(interval);
+        }
+    }, [state, selectedShapeIds, isMultiSelectMode]);
+
+    // Cleanup timeouts on unmount
+    useEffect(() => {
+        return () => {
+            if (updateTimeoutRef.current) {
+                clearTimeout(updateTimeoutRef.current);
+            }
+            if (autoSaveTimeoutRef.current) {
+                clearTimeout(autoSaveTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    // ENHANCED: Memoized context value with comprehensive functionality
     const contextValue = useMemo(() => ({
+        // Core state
         state,
         dispatch: throttledDispatch,
+
+        // Data management
         saveToLocalStorage,
         exportData,
         importData,
         isLoading,
+
+        // View state
         scale,
         mode,
         updateMode,
         updateScale,
         position,
         updatePosition,
+
+        // Selection state - ENHANCED with multi-select
         selectedEntityId,
         selectedShapeId,
         selectedPointIndex,
+        selectedShapeIds,
+        isMultiSelectMode,
         updateSelectedEntitiesIds,
+
+        // Performance optimization
         getBoundingBox,
         calculateShapeBoundingBox,
-        boundingBoxCache: state.boundingBoxCache
+        boundingBoxCache: state.boundingBoxCache,
+
+        // ENHANCED: Context menu functionality
+        contextMenu,
+        openContextMenu,
+        closeContextMenu,
+        moveShapesToEntity,
+
+        // ENHANCED: Additional utility functions
+        getSelectedShapeCount: () => selectedShapeIds.size,
+        hasMultipleShapesSelected: () => selectedShapeIds.size > 1,
+        isShapeSelected: (shapeId: string) => selectedShapeIds.has(shapeId),
+        getSelectedEntityName: () => {
+            if (selectedEntityId && state.entities[selectedEntityId]) {
+                return state.entities[selectedEntityId].metaData.entityName;
+            }
+            return null;
+        },
+
+        // ENHANCED: Batch operations for multi-selection
+        deleteSelectedShapes: () => {
+            if (selectedShapeIds.size > 0 && selectedEntityId) {
+                const shapeCount = selectedShapeIds.size;
+                const confirmation = confirm(
+                    `Are you sure you want to delete ${shapeCount} shape${shapeCount > 1 ? 's' : ''}?`
+                );
+
+                if (confirmation) {
+                    selectedShapeIds.forEach(shapeId => {
+                        throttledDispatch({
+                            type: 'DELETE_SHAPE',
+                            payload: {
+                                entityId: selectedEntityId,
+                                shapeId
+                            }
+                        });
+                    });
+
+                    // Clear selection after deletion
+                    throttledDispatch({ type: 'CLEAR_SELECTION' });
+                }
+            }
+        },
+
+        duplicateSelectedShapes: () => {
+            if (selectedShapeIds.size > 0 && selectedEntityId) {
+                selectedShapeIds.forEach(shapeId => {
+                    throttledDispatch({
+                        type: 'DUPLICATE_SHAPE',
+                        payload: {
+                            entityId: selectedEntityId,
+                            shapeId,
+                            offset: { x: 20, y: 20 }
+                        }
+                    });
+                });
+            }
+        }
     }), [
+        // Dependencies for memoization
         state,
         throttledDispatch,
         saveToLocalStorage,
@@ -312,9 +657,15 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         selectedEntityId,
         selectedShapeId,
         selectedPointIndex,
+        selectedShapeIds,
+        isMultiSelectMode,
         updateSelectedEntitiesIds,
         getBoundingBox,
-        calculateShapeBoundingBox
+        calculateShapeBoundingBox,
+        contextMenu,
+        openContextMenu,
+        closeContextMenu,
+        moveShapesToEntity
     ]);
 
     return (

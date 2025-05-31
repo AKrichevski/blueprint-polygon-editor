@@ -6,7 +6,7 @@ import { useEditor } from '../../../contexts/editor';
 import type { Point } from "../../../types";
 import Konva from "konva";
 import { isPointInShape, viewportToWorld } from '../../../utils/geometryUtils';
-import {EditMode} from "../../../consts";
+import { EditMode } from "../../../consts";
 
 export const useShapeInteractions = () => {
     const {
@@ -16,10 +16,14 @@ export const useShapeInteractions = () => {
         selectedEntityId,
         selectedShapeId,
         selectedPointIndex,
+        selectedShapeIds,
+        isMultiSelectMode,
         updateSelectedEntitiesIds,
         position,
         scale,
-        getBoundingBox
+        getBoundingBox,
+        openContextMenu,
+        closeContextMenu
     } = useEditor();
 
     // Use refs to track interaction state without triggering renders
@@ -72,6 +76,9 @@ export const useShapeInteractions = () => {
         pointIndex: number,
         e: KonvaEventObject<DragEvent>
     ) => {
+        if(selectedShapeIds.size > 1) {
+            return
+        }
         // Mark as dragging to prevent click handlers from firing
         isDraggingPointRef.current = true;
 
@@ -115,7 +122,7 @@ export const useShapeInteractions = () => {
         e.evt.preventDefault();
     }, [selectedEntityId, selectedShapeId, selectedPointIndex, updateSelectedEntitiesIds, state.shapeLookup]);
 
-    // Handle point drag with optimistic updates (no Redux dispatching during drag)
+    // Handle point drag with optimistic updates
     const handlePointDrag = useCallback((
         entityId: string,
         shapeId: string,
@@ -123,7 +130,7 @@ export const useShapeInteractions = () => {
         e: Konva.KonvaEventObject<DragEvent>
     ) => {
         // Skip if we don't have necessary objects
-        if (!e.target || !e.target.getStage() || !originalPointsRef.current) return;
+        if (!e.target || !e.target.getStage() || !originalPointsRef.current || selectedShapeIds.size > 1) return;
 
         // Get the stage and pointer position
         const stage = e.target.getStage();
@@ -144,9 +151,6 @@ export const useShapeInteractions = () => {
         currentDragPositionRef.current = roundedPos;
 
         // **OPTIMISTIC UPDATE**: Update the canvas directly without Redux
-        // This gives us immediate, smooth visual feedback
-
-        // Update the dragged point position immediately
         if (draggedPointRef.current) {
             draggedPointRef.current.setAttrs({
                 x: roundedPos.x,
@@ -171,7 +175,6 @@ export const useShapeInteractions = () => {
         if (layer) {
             layer.batchDraw();
         }
-
     }, [position, scale]);
 
     // Handle point drag end - sync with Redux state
@@ -181,6 +184,9 @@ export const useShapeInteractions = () => {
         pointIndex: number,
         e: Konva.KonvaEventObject<DragEvent>
     ) => {
+        if (selectedShapeIds.size > 1) {
+            return
+        }
         // Reset dragging state
         isDraggingPointRef.current = false;
 
@@ -214,6 +220,9 @@ export const useShapeInteractions = () => {
         shapeId: string,
         e: KonvaEventObject<DragEvent>
     ) => {
+        if (selectedShapeIds.size > 1) {
+            return
+        }
         const group = e.target;
         const offset = {
             x: group.x(),
@@ -275,46 +284,140 @@ export const useShapeInteractions = () => {
         });
     }, [mode, dispatch, position, scale]);
 
-    // Handle shape selection with improved hit detection
+    // ENHANCED: Handle shape selection with improved multi-select support
     const handleShapeClick = useCallback((
         entityId: string,
-        shapeId: string
+        shapeId: string,
+        e?: Konva.KonvaEventObject<MouseEvent>
     ) => {
         // Prevent clicks while dragging
         if (isDraggingPointRef.current) {
             return;
         }
 
-        // Use O(1) lookup instead of traversal
-        updateSelectedEntitiesIds({
-            entityId,
-            shapeId,
-        });
-    }, [updateSelectedEntitiesIds]);
+        // Close any open context menu first
+        closeContextMenu();
+
+        // Handle multi-select mode with CTRL key
+        const isCtrlPressed = e?.evt.ctrlKey || e?.evt.metaKey || isMultiSelectMode;
+
+        if (isCtrlPressed && selectedShapeIds.size > 0) {
+            // Multi-select mode: check if shape is from same entity
+            const clickedShapeInfo = state.shapeLookup.get(shapeId);
+            if (clickedShapeInfo && selectedEntityId && clickedShapeInfo.entityId !== selectedEntityId) {
+                alert("You can only select shapes from the same entity!");
+                return;
+            }
+
+            // Add or remove from selection
+            updateSelectedEntitiesIds({
+                entityId,
+                shapeId,
+                multiSelect: true
+            });
+        } else {
+            // Single select mode
+            updateSelectedEntitiesIds({
+                entityId,
+                shapeId,
+                clearSelection: false
+            });
+        }
+    }, [
+        selectedShapeIds,
+        selectedEntityId,
+        isMultiSelectMode,
+        state.shapeLookup,
+        updateSelectedEntitiesIds,
+        closeContextMenu
+    ]);
+
+    // ENHANCED: Handle right-click context menu
+    const handleShapeRightClick = useCallback((
+        entityId: string,
+        shapeId: string,
+        e: Konva.KonvaEventObject<MouseEvent>
+    ) => {
+        e.evt.preventDefault(); // Prevent browser context menu
+
+        // Get the stage and calculate menu position first
+        const stage = e.target.getStage();
+        if (!stage) return;
+
+        const menuPosition = {
+            x: e.evt.clientX,
+            y: e.evt.clientY
+        };
+
+        let contextSelection: Set<string>;
+        let contextEntityId: string;
+
+        // If this shape is already selected (part of current selection)
+        if (selectedShapeIds.has(shapeId)) {
+            // Use the current selection - don't change it
+            contextSelection = new Set(selectedShapeIds);
+            contextEntityId = selectedEntityId || entityId;
+        } else {
+            // Shape is not selected - select it first, then show context menu
+            const clickedShapeInfo = state.shapeLookup.get(shapeId);
+            if (!clickedShapeInfo) return;
+
+            const clickedEntityId = clickedShapeInfo.entityId;
+
+            // Check if we can add this to multi-selection
+            if (selectedShapeIds.size > 0 && selectedEntityId && clickedEntityId !== selectedEntityId) {
+                // Different entity - show alert and don't open context menu
+                alert("You can only select shapes from the same entity!");
+                return;
+            }
+
+            // Select this shape and use it for context menu
+            contextSelection = new Set([shapeId]);
+            contextEntityId = clickedEntityId;
+
+            // Update the actual selection
+            updateSelectedEntitiesIds({
+                entityId: clickedEntityId,
+                shapeId,
+                clearSelection: false
+            });
+        }
+
+        // Open context menu with the appropriate selection
+        openContextMenu(menuPosition, contextSelection, contextEntityId);
+    }, [
+        selectedShapeIds,
+        selectedEntityId,
+        state.shapeLookup,
+        updateSelectedEntitiesIds,
+        openContextMenu
+    ]);
 
     // Optimized function to find a shape at a point
     const findShapeAtPoint = useCallback((x: number, y: number): { entityId: string, shapeId: string } | null => {
         // Convert viewport coordinates to world coordinates
         const worldPos = viewportToWorld(x, y, position, scale);
 
-        // Check each entity/shape
-        for (const [entityId, entity] of Object.entries(state.entities)) {
-            if (!entity.visible) continue;
+        // Check each entity/shape using lookup maps for O(1) performance
+        for (const [shapeId, shapeInfo] of state.shapeLookup) {
+            const { entityId, shape } = shapeInfo;
 
-            for (const [shapeId, shape] of Object.entries(entity.shapes)) {
-                // Quick check with bounding box first
-                const bbox = getBoundingBox(shapeId);
-                if (!bbox) continue;
+            // Skip if entity is not visible
+            const entity = state.entityLookup.get(entityId);
+            if (!entity || !entity.visible) continue;
 
-                // Use precise hit detection if in bounding box
-                if (isPointInShape(shape, worldPos, 5 / scale)) {
-                    return { entityId, shapeId };
-                }
+            // Quick check with bounding box first
+            const bbox = getBoundingBox(shapeId);
+            if (!bbox) continue;
+
+            // Use precise hit detection if in bounding box
+            if (isPointInShape(shape, worldPos, 5 / scale)) {
+                return { entityId, shapeId };
             }
         }
 
         return null;
-    }, [state.entities, position, scale, getBoundingBox]);
+    }, [state.shapeLookup, state.entityLookup, position, scale, getBoundingBox]);
 
     return {
         handlePointClick,
@@ -324,6 +427,7 @@ export const useShapeInteractions = () => {
         handleShapeDragEnd,
         handleLineClick,
         handleShapeClick,
+        handleShapeRightClick, // NEW: Right-click handler
         findShapeAtPoint,
     };
 };

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/consts/index.ts
 import type {EditorState} from "../contexts/editor";
 

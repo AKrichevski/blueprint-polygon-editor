@@ -395,8 +395,6 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
 
         case 'MOVE_POINT': {
             const { entityId, shapeId, pointIndex, newPosition } = action.payload;
-
-            debugger
             const shapeInfo = state.shapeLookup.get(shapeId);
             if (!shapeInfo || shapeInfo.entityId !== entityId) return state;
 
@@ -405,7 +403,8 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 return state;
             }
 
-            const newPoint = newPosition(shape.points[pointIndex]);
+            const newPoint = typeof newPosition === 'function' ? newPosition(shape.points[pointIndex]) : newPosition;
+            // const newPoint = newPosition(shape.points[pointIndex]);
             if (!validateCoordinates(newPoint)) {
                 return state;
             }
@@ -706,7 +705,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             // Skip if no changes
             let hasChanges = false;
             for (const [key, value] of Object.entries(properties)) {
-                if (key in shape && shape[key] !== value) {
+                if (shape[key] === undefined || key in shape && shape[key] !== value) {
                     hasChanges = true;
                     break;
                 }
@@ -942,6 +941,161 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                 entityLookup: newEntityLookup,
                 shapeLookup: newShapeLookup,
                 boundingBoxCache: newBoundingBoxCache
+            };
+        }
+        // Enhanced EditorReducer.ts - Add these cases to the existing switch statement
+
+        // NEW: Multi-selection actions
+        case 'SET_SELECTED_SHAPES': {
+            const newSelectedShapeIds = action.payload;
+
+            if (newSelectedShapeIds.size === state.selectedShapeIds.size &&
+                [...newSelectedShapeIds].every(id => state.selectedShapeIds.has(id))) {
+                return state;
+            }
+
+            return {
+                ...state,
+                selectedShapeIds: newSelectedShapeIds,
+                selectedShapeId: newSelectedShapeIds.size > 0 ? [...newSelectedShapeIds][0] : null
+            };
+        }
+
+        case 'CLEAR_SELECTION': {
+            if (state.selectedShapeIds.size === 0 &&
+                !state.selectedEntityId &&
+                !state.selectedShapeId &&
+                state.selectedPointIndex === null) {
+                return state;
+            }
+
+            return {
+                ...state,
+                selectedEntityId: null,
+                selectedShapeId: null,
+                selectedPointIndex: null,
+                selectedShapeIds: new Set()
+            };
+        }
+
+        case 'ADD_TO_SELECTION': {
+            const shapeId = action.payload;
+            if (state.selectedShapeIds.has(shapeId)) {
+                return state;
+            }
+
+            const newSelectedShapeIds = new Set(state.selectedShapeIds);
+            newSelectedShapeIds.add(shapeId);
+
+            return {
+                ...state,
+                selectedShapeIds: newSelectedShapeIds,
+                selectedShapeId: shapeId
+            };
+        }
+
+        case 'REMOVE_FROM_SELECTION': {
+            const shapeId = action.payload;
+            if (!state.selectedShapeIds.has(shapeId)) {
+                return state;
+            }
+
+            const newSelectedShapeIds = new Set(state.selectedShapeIds);
+            newSelectedShapeIds.delete(shapeId);
+
+            // Update selectedShapeId to another shape if available
+            const newSelectedShapeId = newSelectedShapeIds.size > 0 ?
+                [...newSelectedShapeIds][0] : null;
+
+            return {
+                ...state,
+                selectedShapeIds: newSelectedShapeIds,
+                selectedShapeId: newSelectedShapeId
+            };
+        }
+
+        // NEW: Move shapes between entities
+        case 'MOVE_SHAPES_TO_ENTITY': {
+            const { fromEntityId, toEntityId, shapeIds } = action.payload;
+
+            const fromEntity = state.entities[fromEntityId];
+            const toEntity = state.entities[toEntityId];
+
+            if (!fromEntity || !toEntity || shapeIds.length === 0) {
+                return state;
+            }
+
+            // Extract shapes to move
+            const shapesToMove: Record<string, GeometricShape> = {};
+            const remainingShapes: Record<string, GeometricShape> = {};
+
+            for (const [shapeId, shape] of Object.entries(fromEntity.shapes)) {
+                if (shapeIds.includes(shapeId)) {
+                    // Update entityType when moving
+                    shapesToMove[shapeId] = {
+                        center: undefined, points: [], radius: 0,
+                        ...shape,
+                        entityType: toEntityId
+                    };
+                } else {
+                    remainingShapes[shapeId] = shape;
+                }
+            }
+
+            // If no shapes to move, return current state
+            if (Object.keys(shapesToMove).length === 0) {
+                return state;
+            }
+
+            // Create updated entities
+            const updatedFromEntity = {
+                ...fromEntity,
+                shapes: remainingShapes
+            };
+
+            const updatedToEntity = {
+                ...toEntity,
+                shapes: {
+                    ...toEntity.shapes,
+                    ...shapesToMove
+                }
+            };
+
+            const newEntities = {
+                ...state.entities,
+                [fromEntityId]: updatedFromEntity,
+                [toEntityId]: updatedToEntity
+            };
+
+            // Update lookups efficiently
+            const newEntityLookup = new Map(state.entityLookup);
+            newEntityLookup.set(fromEntityId, updatedFromEntity);
+            newEntityLookup.set(toEntityId, updatedToEntity);
+
+            const newShapeLookup = new Map(state.shapeLookup);
+            const newBoundingBoxCache = new Map(state.boundingBoxCache);
+
+            // Update shape lookups for moved shapes
+            for (const shapeId of shapeIds) {
+                const shape = shapesToMove[shapeId];
+                if (shape) {
+                    newShapeLookup.set(shapeId, { entityId: toEntityId, shape });
+                    // Bounding box doesn't change when moving between entities
+                    // so we can keep the existing cache entry
+                }
+            }
+
+            // Clear selection since shapes moved to different entity
+            return {
+                ...state,
+                entities: newEntities,
+                entityLookup: newEntityLookup,
+                shapeLookup: newShapeLookup,
+                boundingBoxCache: newBoundingBoxCache,
+                selectedEntityId: toEntityId, // Select the target entity
+                selectedShapeId: null,
+                selectedPointIndex: null,
+                selectedShapeIds: new Set() // Clear multi-selection
             };
         }
 

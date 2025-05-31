@@ -1,46 +1,47 @@
 // src/hooks/useCanvasSize.ts
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useLayoutEffect, useRef } from 'react';
 
 interface CanvasSize {
     width: number;
     height: number;
 }
 
-export function useCanvasSize(containerRef: React.RefObject<HTMLDivElement | null>): CanvasSize {
-    const [size, setSize] = useState<CanvasSize>({ width: 800, height: 600 });
+export function useCanvasSize(
+    containerRef: React.RefObject<HTMLDivElement | null>
+): CanvasSize {
+    const [size, setSize] = useState<CanvasSize>({ width: 1000, height: 600 });
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
-    useEffect(() => {
+    // Re‐run whenever containerRef.current changes (i.e. when the <div> appears).
+    useLayoutEffect(() => {
+        const element = containerRef.current;
+        if (!element) {
+            // If the ref isn’t attached yet, do nothing.
+            return;
+        }
+
+        // Measure once immediately:
         const updateSize = () => {
-            if (containerRef.current) {
-                const { clientWidth, clientHeight } = containerRef.current;
+            if (element) {
                 setSize({
-                    width: clientWidth,
-                    height: clientHeight,
+                    width: element.clientWidth,
+                    height: element.clientHeight,
                 });
             }
         };
-
-        // Initial size calculation
         updateSize();
 
-        // Set up ResizeObserver
-        if (containerRef.current) {
-            resizeObserverRef.current = new ResizeObserver(updateSize);
-            if ("observe" in resizeObserverRef.current) {
-                resizeObserverRef.current.observe(containerRef.current);
-            }
-        }
+        // Now observe for future size changes:
+        resizeObserverRef.current = new ResizeObserver(updateSize);
+        resizeObserverRef.current.observe(element);
 
-        // Clean up
+        // Clean up on unmount or if element changes:
         return () => {
             if (resizeObserverRef.current) {
-                if ("disconnect" in resizeObserverRef.current) {
-                    resizeObserverRef.current.disconnect();
-                }
+                resizeObserverRef.current.disconnect();
             }
         };
-    }, [containerRef]);
+    }, [containerRef.current]); // ← Notice containerRef.current here
 
     return size;
 }

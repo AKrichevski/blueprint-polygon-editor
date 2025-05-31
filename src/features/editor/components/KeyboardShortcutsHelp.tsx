@@ -11,13 +11,15 @@ const KeyboardShortcutsHelp: React.FC = () => {
     // Group shortcuts by category
     const shortcutGroups = {
         "Mode Selection": shortcuts.filter(s =>
-            ['s', 'a', 'p', 'd'].includes(s.key)),
+            ['s', 'a', 'p', 'd'].includes(s.key) && !s.ctrl),
+        "Selection": shortcuts.filter(s =>
+            s.key === 'Escape' ||
+            (s.key === 'a' && s.ctrl) ||
+            s.key === 'Delete'),
         "Navigation": shortcuts.filter(s =>
-            ['=', '-', '0', 'f'].includes(s.key) ||
-            s.key === 'Escape'),
+            ['=', '-', '0', 'f'].includes(s.key)),
         "Editing": shortcuts.filter(s =>
-            s.key === 'Delete' ||
-            s.key === 'c' ||
+            (s.key === 'c' && s.ctrl) ||
             ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(s.key))
     };
 

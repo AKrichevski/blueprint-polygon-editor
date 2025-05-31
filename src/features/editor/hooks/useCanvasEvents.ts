@@ -21,7 +21,18 @@ export const useCanvasEvents = (
     newPolygonPoints?: Point[],
     setNewPolygonPoints?: React.Dispatch<React.SetStateAction<Point[]>>
 ) => {
-    const {mode, scale, position, selectedEntityId, updateScale, updatePosition} = useEditor();
+    const {
+        mode,
+        scale,
+        position,
+        selectedEntityId,
+        selectedShapeIds,
+        updateScale,
+        updatePosition,
+        updateSelectedEntitiesIds,
+        closeContextMenu
+    } = useEditor();
+
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef<{ x: number, y: number } | null>(null);
     const lastMousePositionRef = useRef<{ x: number, y: number } | null>(null);
@@ -63,7 +74,6 @@ export const useCanvasEvents = (
         }
 
         // Calculate new position to maintain the mouse world position
-        // This is the key to prevent jumping during zoom
         const mousePos = pointerPos;
         const x = mousePos.x - mouseWorldPos.x * newScale;
         const y = mousePos.y - mouseWorldPos.y * newScale;
@@ -74,6 +84,9 @@ export const useCanvasEvents = (
 
     // Canvas drag handling without interfering with shape dragging
     const handleCanvasMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
+        // Close context menu on any click
+        closeContextMenu();
+
         // Only handle canvas drag in select mode and when no shape is targeted
         if (mode !== EditMode.SELECT || e.target !== e.target.getStage()) {
             return;
@@ -99,7 +112,7 @@ export const useCanvasEvents = (
             x: e.evt.clientX - position.x,
             y: e.evt.clientY - position.y
         };
-    }, [mode, position]);
+    }, [mode, position, closeContextMenu]);
 
     const handleCanvasMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
         if (!isDragging || !dragStartRef.current) {
@@ -117,7 +130,7 @@ export const useCanvasEvents = (
         dragStartRef.current = null;
     }, []);
 
-    // Enhanced canvas click for better polygon creation
+    // ENHANCED: Canvas click with multi-selection support
     const handleCanvasClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
         // Ignore clicks during drag
         if (isDragging || !stageRef.current) return;
@@ -125,7 +138,16 @@ export const useCanvasEvents = (
         // Skip if clicking on a shape
         if (e.target !== e.target.getStage()) return;
 
-        // Get click position
+        // ENHANCED: Clear selection when clicking on empty canvas
+        // But only if CTRL is not pressed (to allow multi-select to persist)
+        const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey;
+
+        if (!isCtrlPressed && selectedShapeIds.size > 0) {
+            // Clear all selections when clicking on empty canvas
+            updateSelectedEntitiesIds({ clearSelection: true });
+        }
+
+        // Get click position for polygon creation
         const clickPos = stageRef.current.getPointerPosition();
         if (!clickPos) return;
 
@@ -135,15 +157,27 @@ export const useCanvasEvents = (
             const worldPos = viewportToWorld(clickPos.x, clickPos.y, position, scale);
 
             // Add point with fixed precision to avoid floating point issues
-            setNewPolygonPoints(prev => [
-                ...prev,
-                {
-                    x: Math.round(worldPos.x * 100) / 100,
-                    y: Math.round(worldPos.y * 100) / 100
-                }
-            ]);
+            if (setNewPolygonPoints) {
+                setNewPolygonPoints(prev => [
+                    ...prev,
+                    {
+                        x: Math.round(worldPos.x * 100) / 100,
+                        y: Math.round(worldPos.y * 100) / 100
+                    }
+                ]);
+            }
         }
-    }, [isDragging, stageRef, mode, selectedEntityId, position, scale, setNewPolygonPoints]);
+    }, [
+        isDragging,
+        stageRef,
+        mode,
+        selectedEntityId,
+        selectedShapeIds,
+        position,
+        scale,
+        setNewPolygonPoints,
+        updateSelectedEntitiesIds
+    ]);
 
     // Track mouse position for coordinate display
     const handleMouseMove = useCallback(() => {
@@ -161,12 +195,23 @@ export const useCanvasEvents = (
         dragStartRef.current = null;
     }, []);
 
+    // ENHANCED: Handle right-click context menu
+    const handleCanvasRightClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
+        e.evt.preventDefault(); // Prevent browser context menu
+
+        // Close any existing context menu
+        closeContextMenu();
+
+        // Don't show context menu on empty canvas - only on shapes
+    }, [closeContextMenu]);
+
     return {
         handleWheel,
         handleCanvasMouseDown,
         handleCanvasMouseMove,
         handleCanvasMouseUp,
         handleCanvasClick,
+        handleCanvasRightClick, // NEW: Right-click handler
         handleMouseMove,
         handleMouseLeave,
         isDragging,

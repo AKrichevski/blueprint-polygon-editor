@@ -15,7 +15,7 @@ interface ShortcutConfig {
 
 export function useKeyboardShortcuts() {
     const {
-        state, scale, mode, updateMode, updatePosition, updateScale, selectedEntityId,
+        state, scale, mode, updateMode, updatePosition, updateScale, selectedEntityId, selectedShapeIds,
         selectedShapeId,
         selectedPointIndex, updateSelectedEntitiesIds, dispatch
     } = useEditor();
@@ -32,10 +32,16 @@ export function useKeyboardShortcuts() {
             },
             {
                 key: 'a',
-                description: 'Switch to Add Polygon mode (when entity is selected)',
+                ctrl: true,
+                description: 'Select all shapes in current entity',
                 action: () => {
-                    if (selectedEntityId) {
-                        updateMode(EditMode.ADD_POLYGON);
+                    if (selectedEntityId && state.entities[selectedEntityId]) {
+                        const entity = state.entities[selectedEntityId];
+                        const allShapeIds = new Set(Object.keys(entity.shapes));
+
+                        if (allShapeIds.size > 0) {
+                            dispatch({ type: 'SET_SELECTED_SHAPES', payload: allShapeIds });
+                        }
                     }
                 },
             },
@@ -85,34 +91,67 @@ export function useKeyboardShortcuts() {
             // Delete shortcuts
             {
                 key: 'Delete',
-                description: 'Delete selected point (if polygon has >3 points)',
+                description: 'Delete selected shapes or point',
                 action: () => {
-                    dispatch({
-                        type: 'DELETE_POINT',
-                        payload: {
-                            entityId: selectedEntityId,
-                            shapeId: selectedShapeId,
-                            pointIndex: selectedPointIndex,
-                        },
-                    });
+                    if (selectedShapeIds.size > 1) {
+                        // Delete multiple shapes
+                        const shapeCount = selectedShapeIds.size;
+                        if (confirm(`Are you sure you want to delete ${shapeCount} shapes?`)) {
+                            selectedShapeIds.forEach(shapeId => {
+                                const shapeInfo = state.shapeLookup.get(shapeId);
+                                if (shapeInfo) {
+                                    dispatch({
+                                        type: 'DELETE_SHAPE',
+                                        payload: {
+                                            entityId: shapeInfo.entityId,
+                                            shapeId
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    } else if (selectedShapeId && selectedPointIndex !== null) {
+                        // Delete selected point
+                        dispatch({
+                            type: 'DELETE_POINT',
+                            payload: {
+                                entityId: selectedEntityId,
+                                shapeId: selectedShapeId,
+                                pointIndex: selectedPointIndex,
+                            },
+                        });
+                    } else if (selectedShapeId) {
+                        // Delete single shape
+                        if (confirm('Are you sure you want to delete this shape?')) {
+                            dispatch({
+                                type: 'DELETE_SHAPE',
+                                payload: {
+                                    entityId: selectedEntityId,
+                                    shapeId: selectedShapeId
+                                }
+                            });
+                        }
+                    }
                 },
             },
 
             // New shortcuts for faster workflow
             {
                 key: 'Escape',
-                description: 'Cancel current operation or deselect',
+                description: 'Clear selection or cancel current operation',
                 action: () => {
-                    debugger
                     if (mode !== EditMode.SELECT) {
                         // First switch back to select mode
-                        updateMode(EditMode.SELECT)
+                        updateMode(EditMode.SELECT);
+                    } else if (selectedShapeIds && selectedShapeIds.size > 0) {
+                        // Clear multi-selection
+                        updateSelectedEntitiesIds({ clearSelection: true });
                     } else if (selectedPointIndex !== null) {
                         // Then deselect point
-                        updateSelectedEntitiesIds({pointIndex: null})
+                        updateSelectedEntitiesIds({ pointIndex: null });
                     } else if (selectedShapeId) {
-                        updateSelectedEntitiesIds({shapeId: null})
-                        // Then deselect polygon
+                        // Then deselect shape
+                        updateSelectedEntitiesIds({ shapeId: null });
                     }
                 },
             },
@@ -153,28 +192,19 @@ export function useKeyboardShortcuts() {
             {
                 key: 'c',
                 ctrl: true,
-                description: 'Copy selected polygon',
+                description: 'Duplicate selected shapes',
                 action: () => {
-                    // Copy the selected polygon to a new polygon with a slight offset
-                    if (selectedEntityId && selectedShapeId) {
-                        const entity = entities.find(e => e.id === selectedEntityId);
-                        const polygon = entity?.polygons.find(p => p.id === selectedShapeId);
-
-                        if (polygon) {
-                            // Create a copy of points with a slight offset
-                            const offsetPoints = polygon.points.map(point => ({
-                                x: point.x + 20,
-                                y: point.y + 20,
-                            }));
-
+                    if (selectedShapeIds && selectedEntityId && selectedShapeIds.size > 0) {
+                        selectedShapeIds.forEach(shapeId => {
                             dispatch({
-                                type: 'ADD_POLYGON',
+                                type: 'DUPLICATE_SHAPE',
                                 payload: {
                                     entityId: selectedEntityId,
-                                    points: offsetPoints,
-                                },
+                                    shapeId,
+                                    offset: { x: 20, y: 20 }
+                                }
                             });
-                        }
+                        });
                     }
                 },
             },

@@ -99,7 +99,6 @@ const ShapePropertiesEditor: React.FC = () => {
     // Handle form submission
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-
         if (!selectedEntityId || !selectedShapeId || !selectedShape) return;
 
         // Prepare update payload

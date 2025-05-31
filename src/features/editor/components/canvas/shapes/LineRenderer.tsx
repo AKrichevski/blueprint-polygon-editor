@@ -1,3 +1,4 @@
+// src/features/editor/components/canvas/shapes/LineRenderer.tsx
 import React, { memo, useMemo, useRef, useCallback } from "react";
 import type { LineShape } from "../../../../../types";
 import { useEditor } from "../../../../../contexts/editor";
@@ -20,7 +21,7 @@ const LineRenderer: React.FC<LineRendererProps> = memo(({
                                                             color,
                                                             entityId,
                                                         }) => {
-    const { mode, selectedPointIndex } = useEditor();
+    const { mode, selectedPointIndex, selectedShapeIds } = useEditor();
     const shapeGroupRef = useRef<any>(null);
 
     const {
@@ -29,35 +30,44 @@ const LineRenderer: React.FC<LineRendererProps> = memo(({
         handlePointDrag,
         handlePointDragEnd,
         handleShapeClick,
+        handleShapeRightClick, // NEW: Right-click handler
         handleShapeDragEnd
     } = useShapeInteractions();
 
-    // ---- memoized style + geometry ----
-    const strokeColor = useMemo(
-        () => shape.style?.strokeColor || color,
-        [shape.style?.strokeColor, color]
-    );
-    const strokeWidth = useMemo(
-        () => ((shape.style?.strokeWidth || 1) * (isSelected ? 1.5 : 1)),
-        [shape.style?.strokeWidth, isSelected]
-    );
+    // Enhanced styling for multi-selection
+    const strokeColor = useMemo(() => {
+        if (selectedShapeIds.size > 1 && selectedShapeIds.has(shapeId)) {
+            return '#ff6b35'; // Orange for multi-selection
+        }
+        return shape.style?.strokeColor || color;
+    }, [shape.style?.strokeColor, color, selectedShapeIds, shapeId]);
+
+    const strokeWidth = useMemo(() => {
+        const baseWidth = shape.style?.strokeWidth || 1;
+        if (selectedShapeIds.size > 1 && selectedShapeIds.has(shapeId)) {
+            return baseWidth * 2; // Thicker for multi-selection
+        }
+        return baseWidth * (isSelected ? 1.5 : 1);
+    }, [shape.style?.strokeWidth, isSelected, selectedShapeIds, shapeId]);
+
     const dashPattern = useMemo(
         () => shape.style?.dashPattern,
         [shape.style?.dashPattern]
     );
+
     const points = useMemo(
         () => shape.points.flatMap(p => [p.x, p.y]),
         [shape.points]
     );
 
-    // ---- helper to reset the Group origin ----
+    // Helper to reset the Group origin
     const resetGroupOrigin = useCallback(() => {
         if (shapeGroupRef.current) {
             shapeGroupRef.current.position({ x: 0, y: 0 });
         }
     }, []);
 
-    // ---- point‐drag handlers ----
+    // Point-drag handlers
     const handlePointDragStartCustom = useCallback((i: number) => (e: any) => {
         e.cancelBubble = true;
         e.evt.stopPropagation();
@@ -78,7 +88,7 @@ const LineRenderer: React.FC<LineRendererProps> = memo(({
         handlePointDragEnd(entityId, shapeId, i, e);
     }, [entityId, shapeId, handlePointDragEnd, resetGroupOrigin]);
 
-    // ---- shape‐drag end handler (unchanged) ----
+    // Shape-drag end handler
     const handleShapeDragEndCustom = useCallback((e: any) => {
         const grp = e.target;
         const x = grp.x(), y = grp.y();
@@ -88,7 +98,26 @@ const LineRenderer: React.FC<LineRendererProps> = memo(({
         }
     }, [entityId, shapeId, handleShapeDragEnd]);
 
-    // ---- render the draggable endpoints when selected ----
+    // Handle clicks with multi-select support
+    const handleShapeClickCustom = useCallback((e: any) => {
+        if (e.evt?.button === 2) {
+            return;
+        }
+        e.cancelBubble = true;
+        e.evt.stopPropagation();
+        handleShapeClick(entityId, shapeId, e);
+    }, [entityId, shapeId, handleShapeClick]);
+
+    // Handle right-click context menu
+    const handleShapeRightClickCustom = useCallback((e: any) => {
+        e.cancelBubble = true;
+        e.evt.stopPropagation();
+        // Important: Don't call handleShapeClick here!
+        // Just handle the right-click directly
+        handleShapeRightClick(entityId, shapeId, e);
+    }, [entityId, shapeId, handleShapeRightClick]);
+
+    // Render the draggable endpoints when selected
     const endpoints = useMemo(() => {
         if (!isSelected) return null;
         return shape.points.map((pt, i) => (
@@ -133,7 +162,7 @@ const LineRenderer: React.FC<LineRendererProps> = memo(({
             onDragStart={resetGroupOrigin}
             onDragEnd={handleShapeDragEndCustom}
         >
-            {/* main line, pinned at origin */}
+            {/* Main line */}
             <Line
                 x={0}
                 y={0}
@@ -141,18 +170,33 @@ const LineRenderer: React.FC<LineRendererProps> = memo(({
                 stroke={strokeColor}
                 strokeWidth={strokeWidth}
                 dash={dashPattern}
-                onClick={() => handleShapeClick(entityId, shapeId)}
+                onClick={handleShapeClickCustom}
+                onContextMenu={handleShapeRightClickCustom} // NEW: Right-click handler
                 hitStrokeWidth={10}
                 perfectDrawEnabled={false}
             />
 
-            {/* endpoints */}
+            {/* Multi-selection indicator */}
+            {selectedShapeIds.size > 1 && selectedShapeIds.has(shapeId) && (
+                <Line
+                    x={0}
+                    y={0}
+                    points={points}
+                    stroke="#ff6b35"
+                    strokeWidth={3}
+                    dash={[5, 5]}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                    opacity={0.8}
+                />
+            )}
+
+            {/* Endpoints */}
             {endpoints}
         </Group>
     );
-}, arePropsEqual);
+});
 
-// same shallow compare as before
 function arePropsEqual(a: LineRendererProps, b: LineRendererProps) {
     return (
         a.shape === b.shape &&
@@ -163,4 +207,4 @@ function arePropsEqual(a: LineRendererProps, b: LineRendererProps) {
     );
 }
 
-export default LineRenderer;
+export default memo(LineRenderer, arePropsEqual);

@@ -4,7 +4,6 @@ import React, {
     useState,
     useRef,
     Suspense,
-    useMemo,
     useCallback,
     memo,
 } from 'react';
@@ -24,19 +23,8 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { classNames } from '../../styles/theme';
 import { useEditor } from "../../contexts/editor";
 
-// Lazy-loaded
+// Lazy‐load the HelpGuide modal
 const HelpGuide = React.lazy(() => import('./components/HelpGuide'));
-
-const SHAPE_TYPES_LEGEND = Object.freeze([
-    { icon: '⬜', type: 'Polygon', desc: 'Custom shapes with 3+ points' },
-    { icon: '▭', type: 'Rectangle', desc: 'Four-sided shapes' },
-    { icon: '○', type: 'Circle', desc: 'Perfect circles' },
-    { icon: '◜', type: 'Arc', desc: 'Circular segments' },
-    { icon: '📏', type: 'Line', desc: 'Straight lines' },
-    { icon: '⬭', type: 'Ellipse', desc: 'Oval shapes' },
-    { icon: '•', type: 'Point', desc: 'Individual points' },
-    { icon: '🗛', type: 'Text', desc: 'Text annotations' },
-]);
 
 const EditorPage: React.FC = memo(() => {
     const { isLoading: editorLoading } = useEditor();
@@ -44,11 +32,12 @@ const EditorPage: React.FC = memo(() => {
     const canvasContainerRef = useRef<HTMLDivElement | null>(null);
     const { width, height } = useCanvasSize(canvasContainerRef);
 
+    // Hook for keyboard shortcuts in the canvas/editor
     useKeyboardShortcuts();
 
+    // On first load, maybe show the help modal
     useEffect(() => {
         document.title = "Blueprint Shape Editor";
-
         if (localStorage.getItem('blueprint-editor-first-visit') !== 'false') {
             setIsHelpModalOpen(true);
             localStorage.setItem('blueprint-editor-first-visit', 'false');
@@ -58,39 +47,30 @@ const EditorPage: React.FC = memo(() => {
     const openHelp = useCallback(() => setIsHelpModalOpen(true), []);
     const closeHelp = useCallback(() => setIsHelpModalOpen(false), []);
 
-    const shapeLegend = useMemo(() => (
-        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Shape Types Available</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                {SHAPE_TYPES_LEGEND.map(shape => (
-                    <div key={shape.type} className="flex items-center">
-                        <span className="mr-1">{shape.icon}</span>
-                        <span>
-              <strong>{shape.type}</strong>: {shape.desc}
-            </span>
-                    </div>
-                ))}
-            </div>
-        </div>
-    ), []);
-
     if (editorLoading) {
         return (
             <div className={classNames.loading.container}>
                 <div className="text-center">
-                    <div className={classNames.loading.spinner}></div>
-                    <p className={classNames.loading.text}>Loading Blueprint Shape Editor...</p>
+                    <div className={classNames.loading.spinner} />
+                    <p className={classNames.loading.text}>
+                        Loading Blueprint Shape Editor...
+                    </p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className={classNames.container.base}>
-            <header className="mb-6 flex justify-between items-center">
+        <div className="flex flex-col h-screen">
+            {/* ========== HEADER ========== */}
+            <header className="mb-4 flex justify-between items-center px-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Blueprint Shape Editor</h1>
-                    <p className="text-gray-600">Create, edit, and manage geometric shapes on your blueprint</p>
+                    <h1 className="text-2xl font-bold text-gray-800">
+                        Blueprint Shape Editor
+                    </h1>
+                    <p className="text-gray-600">
+                        Create, edit, and manage geometric shapes on your blueprint
+                    </p>
                 </div>
                 <div className="flex items-center space-x-4">
                     <button
@@ -103,45 +83,51 @@ const EditorPage: React.FC = memo(() => {
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {/* Left Sidebar */}
-                <div className="lg:col-span-1 space-y-6">
-                    <EntityList />
-                    <EntityDetailsEditor />
-                    <ShapePropertiesEditor />
-                    <ShapeDrawingTools />
-                    <SvgBackgroundUploader />
-                    <ImportExportTool />
-                </div>
-
-                {/* Canvas */}
-                <div className="lg:col-span-3">
-                    <div
-                        ref={canvasContainerRef}
-                        className="relative border border-gray-300 rounded-lg bg-gray-100 h-[600px]"
-                    >
-                        <CanvasView width={width} height={height} />
-                        <ZoomControls />
+            {/* ========== MAIN CONTENT ========== */}
+            <div className="flex-1 overflow-hidden">
+                {/* Use a 12-column grid; sidebar spans 2 columns, canvas spans 10 */}
+                <div className="h-full w-full grid grid-cols-1 lg:grid-cols-12 gap-2">
+                    {/* Sidebar: lg:col-span-2 (≈1/6 width) */}
+                    <div className="lg:col-span-2 space-y-4 overflow-auto px-4">
+                        <EntityList />
+                        <EntityDetailsEditor />
+                        <ShapePropertiesEditor />
+                        <ShapeDrawingTools />
+                        <SvgBackgroundUploader />
+                        <ImportExportTool />
                     </div>
-                    {shapeLegend}
+
+                    {/* Canvas: lg:col-span-10 (≈5/6 width) */}
+                    <div className="lg:col-span-10 flex flex-col h-full w-full px-4">
+                        <div
+                            ref={canvasContainerRef}
+                            className="
+                relative
+                flex-1
+                w-full
+                h-full
+                border border-gray-300
+                rounded-lg
+                bg-gray-100
+                overflow-hidden
+              "
+                        >
+                            <CanvasView width={width} height={height} />
+                            <ZoomControls />
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Footer */}
-            <footer className="mt-12 py-4 text-center text-gray-500 text-sm border-t border-gray-200">
-                <p>Blueprint Shape Editor v1.0 • Created with React + TypeScript + Konva</p>
-                <p className="mt-1">
-                    Supports: Polygons, Rectangles, Circles, Arcs, Lines, Ellipses, Points, and Text
-                </p>
-            </footer>
-
-            {/* Help Modal */}
+            {/* ========== HELP MODAL ========== */}
             {isHelpModalOpen && (
-                <Suspense fallback={
-                    <div className={classNames.loading.container}>
-                        <div className={classNames.loading.spinner}></div>
-                    </div>
-                }>
+                <Suspense
+                    fallback={
+                        <div className={classNames.loading.container}>
+                            <div className={classNames.loading.spinner} />
+                        </div>
+                    }
+                >
                     <HelpGuide isOpen={isHelpModalOpen} onClose={closeHelp} />
                 </Suspense>
             )}

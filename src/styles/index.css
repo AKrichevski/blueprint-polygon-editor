@@ -89,3 +89,83 @@ body {
 .cursor-delete-point {
     cursor: not-allowed;
 }
+
+/* Multi-selection indicator */
+.multi-selected-shape {
+    stroke: #ff6b35 !important;
+    stroke-width: 3px !important;
+    filter: drop-shadow(0 0 6px rgba(255, 107, 53, 0.6));
+}
+
+/* Selection count badge */
+.selection-count-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #ff6b35;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    z-index: 100;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Context menu animations */
+.context-menu-enter {
+    opacity: 0;
+    transform: scale(0.9);
+}
+
+.context-menu-enter-active {
+    opacity: 1;
+    transform: scale(1);
+    transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+
+.context-menu-exit {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.context-menu-exit-active {
+    opacity: 0;
+    transform: scale(0.9);
+    transition: opacity 100ms ease-in, transform 100ms ease-in;
+}
+
+/* Multi-select mode indicator */
+.multi-select-mode {
+    position: absolute;
+    bottom: 60px;
+    left: 10px;
+    background: rgba(255, 107, 53, 0.9);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 11px;
+    font-weight: 500;
+    z-index: 100;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.9;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
