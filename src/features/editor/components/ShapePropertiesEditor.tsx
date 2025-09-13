@@ -427,7 +427,7 @@ const ShapePropertiesEditor: React.FC = () => {
                 {/* Shape statistics */}
                 <div className="border-t pt-4">
                     <h3 className="text-sm font-medium text-gray-700 mb-2">Statistics</h3>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="gap-2 text-sm">
                         <div>
                             <span className="text-gray-600">ID:</span>{' '}
                             <span className="font-mono text-xs">{selectedShape.id}</span>
@@ -436,13 +436,16 @@ const ShapePropertiesEditor: React.FC = () => {
                             <span className="text-gray-600">Entity:</span>{' '}
                             {selectedEntity?.metaData.entityName}
                         </div>
-
+                        <div>
+                            <span className="text-gray-600">Name:</span>{' '}
+                            <span className="font-mono text-xs">{selectedShape.name}</span>
+                        </div>
                         {/* Shape type specific stats */}
                         {selectedShape.shapeType === 'polygon' && 'points' in selectedShape && (
                             <>
                                 <div>
                                     <span className="text-gray-600">Points:</span>{' '}
-                                    {selectedShape.points.length}
+                                    {selectedShape.points.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(', ')}
                                 </div>
                                 <div>
                                     <span className="text-gray-600">Area:</span>{' '}

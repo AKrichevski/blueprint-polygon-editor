@@ -20,8 +20,64 @@ export enum EditMode {
 }
 
 // Initial state - ensure entities is always an empty object
+export const defaultEntities = {
+    // Default recycle_bin entity
+    'recycle_bin': {
+        id: 'recycle_bin',
+        metaData: {
+            entityName: 'Recycle Bin',
+            altText: 'Default entity for deleted shapes',
+            fontColor: '#FF6B6B'
+        },
+        shapes: {},
+        visible: true
+    },
+    // Furniture categories
+    'furnitures-rooms': {
+        id: 'furnitures-rooms',
+        metaData: {
+            entityName: 'Furnitures - Rooms',
+            altText: 'Furniture items for general rooms',
+            fontColor: '#8B4513'
+        },
+        shapes: {},
+        visible: true
+    },
+    'furnitures-livingRoom': {
+        id: 'furnitures-livingRoom',
+        metaData: {
+            entityName: 'Furnitures - Living Room',
+            altText: 'Furniture items specifically for living room',
+            fontColor: '#D2691E'
+        },
+        shapes: {},
+        visible: true
+    },
+    // Electricity categories
+    'electricity-kitchen': {
+        id: 'electricity-kitchen',
+        metaData: {
+            entityName: 'Electricity - Kitchen',
+            altText: 'Electrical components and outlets for kitchen',
+            fontColor: '#FFD700'
+        },
+        shapes: {},
+        visible: true
+    },
+    'electricity-other': {
+        id: 'electricity-other',
+        metaData: {
+            entityName: 'Electricity - Other',
+            altText: 'Electrical components for other areas',
+            fontColor: '#FFA500'
+        },
+        shapes: {},
+        visible: true
+    }
+};
+
 export const initialEditorState: EditorState = {
-    entities: {},  // Always initialize as empty object
+    entities: defaultEntities,
     selectedEntityId: null,
     selectedShapeId: null,
     selectedPointIndex: null,

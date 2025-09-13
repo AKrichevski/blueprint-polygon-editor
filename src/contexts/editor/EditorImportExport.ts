@@ -2,6 +2,7 @@
 import type { Entity, EntityMetaData, GeometricShape } from "../../types";
 import { parseShape, convertLegacyPolygonsToShapes } from "../../utils/geometryParser";
 import type { EditorAction } from "./EditorContextTypes";
+import { defaultEntities } from "../../consts";
 import React from "react";
 
 /**
@@ -105,7 +106,10 @@ export function processImportData(
                         ...poly,
                         id,
                         shapeType: 'polygon',
-                        entityType: entityId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
+                        name: entityRaw.name || '',
+                        real_area: entityRaw.real_area || 0,
+                        entity_class: entityRaw.entity_class || '',
                     };
                 }
             } else if (Array.isArray(entityRaw.points)) {
@@ -114,7 +118,10 @@ export function processImportData(
                     shapeType: 'polygon',
                     points: entityRaw.points,
                     subType: entityRaw.subType || '',
-                    entityType: entityId,
+                    entity_type: 'new_object_entity_type', // Set entity_type for new objects
+                    name: entityRaw.name || '',
+                    real_area: entityRaw.real_area || 0,
+                    entity_class: entityRaw.entity_class || '',
                 };
             } else if (entityRaw.shapeType || entityRaw.type) {
                 const id = entityRaw.id || 'shape-0';
@@ -122,7 +129,10 @@ export function processImportData(
                     ...entityRaw,
                     id,
                     shapeType: entityRaw.shapeType || entityRaw.type,
-                    entityType: entityId,
+                    entity_type: 'new_object_entity_type', // Set entity_type for new objects
+                    name: entityRaw.name || '',
+                    real_area: entityRaw.real_area || 0,
+                    entity_class: entityRaw.entity_class || '',
                 };
             } else {
                 // Try to detect shapes from primitive properties
@@ -135,8 +145,11 @@ export function processImportData(
                         shapeType: 'circle',
                         center,
                         radius: entityRaw.radius || entityRaw.r,
-                        entityType: entityId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
                         subType: entityRaw.subType || '',
+                        name: entityRaw.name || '',
+                        real_area: entityRaw.real_area || 0,
+                        entity_class: entityRaw.entity_class || '',
                     };
                 } else if (entityRaw.text && (entityRaw.position || (entityRaw.x !== undefined && entityRaw.y !== undefined))) {
                     shapesData['text-0'] = {
@@ -144,16 +157,22 @@ export function processImportData(
                         shapeType: 'text',
                         text: entityRaw.text,
                         position: entityRaw.position || { x: entityRaw.x, y: entityRaw.y },
-                        entityType: entityId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
                         subType: entityRaw.subType || '',
+                        name: entityRaw.name || '',
+                        real_area: entityRaw.real_area || 0,
+                        entity_class: entityRaw.entity_class || '',
                     };
                 } else if (Array.isArray(entityRaw.points) && entityRaw.points.length === 2) {
                     shapesData['line-0'] = {
                         id: 'line-0',
                         shapeType: 'line',
                         points: entityRaw.points,
-                        entityType: entityId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
                         subType: entityRaw.subType || '',
+                        name: entityRaw.name || '',
+                        real_area: entityRaw.real_area || 0,
+                        entity_class: entityRaw.entity_class || '',
                     };
                 }
             }
@@ -163,9 +182,10 @@ export function processImportData(
             for (const shapeId in shapesData) {
                 const rawShape = shapesData[shapeId];
                 rawShape.id = rawShape.id || shapeId;
-                rawShape.entityType = rawShape.entityType || entityId;
+                // Preserve existing entity_type or set to 'new_object_entity_type' for new objects
+                rawShape.entity_type = rawShape.entity_type || 'new_object_entity_type';
 
-                const parsed = parseShape(rawShape, entityId);
+                const parsed = parseShape(rawShape);
                 if (parsed) {
                     validatedShapes[shapeId] = parsed;
                 }
@@ -182,7 +202,12 @@ export function processImportData(
         }
 
         if (Object.keys(validatedEntities).length > 0) {
-            dispatch({ type: 'SET_ENTITIES', payload: validatedEntities });
+            // Merge with default entities to ensure recycle_bin is always present
+            const mergedEntities = {
+                ...defaultEntities, // Default entities (including recycle_bin)
+                ...validatedEntities // Imported entities
+            };
+            dispatch({ type: 'SET_ENTITIES', payload: mergedEntities });
         }
 
         // Reset view

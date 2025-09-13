@@ -22,7 +22,8 @@ import { useCanvasEvents } from '../hooks';
 import { useEditor } from "../../../contexts/editor";
 import { EditMode } from "../../../consts";
 import ShapeContextMenuWithSubmenu from "./ShapeContextMenu";
-import { colors } from '../../../styles/theme'; // to style the “pulled‐out” shape
+import { colors } from '../../../styles/theme'; // to style the "pulled‐out" shape
+import PolygonCreationPreview from './canvas/PolygonCreationPreview';
 
 interface CanvasViewProps {
     width: number;
@@ -295,6 +296,14 @@ const CanvasView: React.FC<CanvasViewProps> = memo(({ width, height }) => {
                      {/*<GridRenderer width={width} height={height} />*/}
                     <BackgroundRenderer />
                     {renderedEntities}
+                    
+                    {/* Polygon Creation Preview */}
+                    {mode === EditMode.ADD_POLYGON && newPolygonPoints.length > 0 && (
+                        <PolygonCreationPreview
+                            points={newPolygonPoints}
+                            onFinish={setNewPolygonPoints}
+                        />
+                    )}
                 </Layer>
             </Stage>
 

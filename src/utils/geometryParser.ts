@@ -14,7 +14,7 @@ import type {
 
 interface RawShape {
     id?: string;
-    entityType?: string;
+    entity_type?: string;
     subType?: string;
     type?: string; // The geometry type from JSON
     shapeType?: string; // Alternative field name
@@ -26,7 +26,7 @@ interface RawShape {
  * Parse a raw shape object from JSON into a typed GeometricShape
  * Enhanced with better shape detection based on coordinates and properties
  */
-export function parseShape(rawShape: RawShape, entityId: string): GeometricShape | null {
+export function parseShape(rawShape: RawShape): GeometricShape | null {
     try {
         // Extract the shape type from various possible fields
         let shapeType = rawShape.type || rawShape.shapeType || rawShape.geomType;
@@ -53,8 +53,11 @@ export function parseShape(rawShape: RawShape, entityId: string): GeometricShape
         // Common properties
         const baseShape = {
             id,
-            entityType: rawShape.entityType || entityId,
+            entity_type: rawShape.entity_type || 'new_object_entity_type', // Preserve entity_type or use default
             subType: rawShape.subType || "",
+            name: rawShape.name || "", // Add this line to preserve the name attribute
+            real_area: rawShape.real_area || 0,
+            entity_class: rawShape.entity_class || "", // Add this line
         };
 
         // Parse based on shape type
@@ -89,7 +92,7 @@ export function parseShape(rawShape: RawShape, entityId: string): GeometricShape
             default:
                 console.warn(`Unknown shape type: ${shapeType}`);
                 // Try to infer from coordinates if type is unknown
-                const inferredShape = inferAndParseShape(rawShape, baseShape);
+                const inferredShape = inferAndParseShape(rawShape);
                 if (inferredShape) {
                     return inferredShape;
                 }
@@ -197,7 +200,7 @@ function isRectangle(points: Point[]): boolean {
 /**
  * Try to infer and parse shape when type is unknown
  */
-function inferAndParseShape(rawShape: RawShape, baseShape: any): GeometricShape | null {
+function inferAndParseShape(rawShape: RawShape): GeometricShape | null {
     const inferredType = inferShapeType(rawShape);
     if (!inferredType) return null;
 
@@ -208,7 +211,7 @@ function inferAndParseShape(rawShape: RawShape, baseShape: any): GeometricShape 
     };
 
     // Parse it again with the inferred type
-    return parseShape(shapeWithType, baseShape.entityType);
+    return parseShape(shapeWithType);
 }
 
 /**
@@ -560,11 +563,14 @@ export function convertLegacyPolygonsToShapes(polygons: any): Record<string, Geo
         if (rawPolygon.points && Array.isArray(rawPolygon.points)) {
             const shape: PolygonShape = {
                 id,
-                entityType: rawPolygon.entityType || '',
+                entity_type: rawPolygon.entity_type || '',
                 subType: rawPolygon.subType || '',
                 shapeType: 'polygon',
                 points: rawPolygon.points,
-                style: parseShapeStyle(rawPolygon.style)
+                style: parseShapeStyle(rawPolygon.style),
+                name: rawPolygon.name || '',
+                real_area: rawPolygon.real_area || 0,
+                entity_class: rawPolygon.entity_class || '', // Add this line
             };
             shapes[id] = shape;
         }

@@ -200,7 +200,7 @@ export const fixShapes = (entity: any, entityId: string): Record<string, Geometr
             shapeType: "polygon",
             points: entity.points,
             subType: entity.subType || "",
-            entityType: entityId
+            entity_type: 'new_object_entity_type' // Set entity_type for new objects
         };
 
         const fixedShape = fixShape(implicitShape, shapeId, entityId);
@@ -237,11 +237,11 @@ export const fixShape = (shapeData: any, shapeId: string, entityId: string): Geo
         const rawShape = {
             ...shapeData,
             id: shapeId,
-            entityType: shapeData.entityType || entityId
+            entity_type: shapeData.entity_type || 'new_object_entity_type' // Set entity_type for new objects
         };
 
         // Use the geometry parser to handle all shape types
-        return parseShape(rawShape, entityId);
+        return parseShape(rawShape);
     } catch (error) {
         console.error(`Error fixing shape ${shapeId}:`, error);
         return null;
@@ -350,7 +350,7 @@ export const createSampleEntity = (): Record<string, Entity> => {
             shapes: {
                 "polygon-1": {
                     id: "polygon-1",
-                    entityType: entityId,
+                    entity_type: entityId,
                     subType: "room",
                     shapeType: "polygon",
                     points: [
@@ -367,7 +367,7 @@ export const createSampleEntity = (): Record<string, Entity> => {
                 },
                 "circle-1": {
                     id: "circle-1",
-                    entityType: entityId,
+                    entity_type: entityId,
                     subType: "area",
                     shapeType: "circle",
                     center: { x: 300, y: 150 },
@@ -380,7 +380,7 @@ export const createSampleEntity = (): Record<string, Entity> => {
                 },
                 "line-1": {
                     id: "line-1",
-                    entityType: entityId,
+                    entity_type: entityId,
                     subType: "connector",
                     shapeType: "line",
                     points: [
@@ -395,7 +395,7 @@ export const createSampleEntity = (): Record<string, Entity> => {
                 },
                 "text-1": {
                     id: "text-1",
-                    entityType: entityId,
+                    entity_type: entityId,
                     subType: "label",
                     shapeType: "text",
                     position: { x: 600, y: 150 },

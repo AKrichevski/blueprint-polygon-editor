@@ -18,6 +18,7 @@ import { calculateBoundingBox } from "../../utils/geometryUtils";
 import {
     EditMode,
     initialEditorState,
+    defaultEntities,
     MAX_SCALE,
     MIN_SCALE,
     POSITION_EPSILON,
@@ -34,6 +35,20 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         boundingBoxCache: new Map<string, BoundingBox>(),
         selectedShapeIds: new Set<string>()
     });
+
+    // Initialize lookup maps with default entities
+    useEffect(() => {
+        if (Object.keys(state.entities).length > 0 && state.entityLookup.size === 0) {
+            const lookups = createOptimizedLookups(state.entities);
+            dispatch({
+                type: 'UPDATE_LOOKUP_MAPS',
+                payload: {
+                    entityLookup: lookups.entityLookup,
+                    shapeLookup: lookups.shapeLookup
+                }
+            });
+        }
+    }, [state.entities, state.entityLookup.size]);
 
     const [isLoading, setIsLoading] = useState(true);
     const [scale, setScale] = useState(1);
@@ -378,13 +393,22 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             try {
                 const raw = localStorage.getItem(STORAGE_KEY);
                 if (!raw) {
-                    if (isMounted) setIsLoading(false);
+                    // No saved data, but ensure default entities are present
+                    if (isMounted) {
+                        dispatch({ type: 'SET_ENTITIES', payload: defaultEntities });
+                        setIsLoading(false);
+                    }
                     return;
                 }
 
                 const parsed = JSON.parse(raw);
                 if (parsed.entities && isMounted) {
-                    dispatch({ type: 'SET_ENTITIES', payload: parsed.entities });
+                    // Merge with default entities to ensure recycle_bin is always present
+                    const mergedEntities = {
+                        ...defaultEntities, // Default entities (including recycle_bin)
+                        ...parsed.entities // User's saved entities
+                    };
+                    dispatch({ type: 'SET_ENTITIES', payload: mergedEntities });
                 }
                 if (parsed.svgBackground && isMounted) {
                     dispatch({ type: 'SET_SVG_BACKGROUND', payload: parsed.svgBackground });

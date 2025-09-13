@@ -16,7 +16,7 @@ export interface BoundingBox {
 // Base shape interface
 export interface BaseShape {
     id: string;
-    entityType: string;
+    entity_type: string;
     subType: string;
     shapeType: 'point' | 'line' | 'arc' | 'polygon' | 'rectangle' | 'circle' | 'ellipse' | 'text';
 }
@@ -81,6 +81,9 @@ export interface EllipseShape extends BaseShape {
 
 export interface PolygonShape extends BaseShape {
     shapeType: 'polygon' | 'rectangle'; // Rectangle is a special case of polygon
+    name?: string;
+    real_area?: number;
+    entity_class?: string;
     points: Point[];
     style?: {
         strokeColor?: string;

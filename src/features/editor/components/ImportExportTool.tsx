@@ -13,6 +13,7 @@ const ImportExportTool: React.FC = () => {
     const [importStatus, setImportStatus] = useState<{ success: boolean; message: string } | null>(null);
     const [isAnalyzingData, setIsAnalyzingData] = useState(false);
     const [dataFormatAnalysis, setDataFormatAnalysis] = useState<string | null>(null);
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
     const exportTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
     const importTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -349,9 +350,99 @@ const ImportExportTool: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
+    // Handle update DB button click
+    const handleUpdateDB = async () => {
+        try {
+            const sessionId = 'bbb41f73-e55d-4003-b7e6-6da25c7f1b26';
+            // Get the current export data (same as what we export)
+            const jsonData = exportData();
+            
+            // Create a Blob from the JSON data
+            const blob = new Blob([jsonData], { type: 'application/json' });
+            
+            // Create a File object from the Blob with a timestamp
+            const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            const file = new File([blob], `blueprint-shapes-data-${timestamp}.json`, { type: 'application/json' });
+            
+            // Create FormData and append the file
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Make the POST request with file upload
+            const response = await fetch(`http://localhost:8000/classification-verifier/classification_verifier/${sessionId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer test-token-development'
+                    // Note: Don't set Content-Type header when using FormData
+                    // The browser will automatically set it with the boundary
+                },
+                body: formData
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('DB update successful:', result);
+                alert('Database updated successfully!');
+            } else {
+                const errorText = await response.text();
+                console.error('DB update failed:', response.status, errorText);
+                alert(`Failed to update database: ${response.status} - ${errorText}`);
+            }
+        } catch (error) {
+            console.error('Error updating DB:', error);
+            alert('Error updating database. Please check the console for details.');
+        }
+    };
+
+    // Handle get next session button click
+    const handleGetNextSession = async () => {
+        try {
+            const verifierId = 'U1234567890';
+            
+            // Make the GET request to get the next session
+            const response = await fetch(`http://localhost:8000/session-assignment/assign/${verifierId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer test-token-development'
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                
+                // Update the session ID in the state (using session_id)
+                setCurrentSessionId(result.session_id);
+                
+                // If there's file data in the response, import it
+                if (result.fileData) {
+                    const importSuccess = importData(JSON.stringify(result.fileData));
+                    if (importSuccess) {
+                        console.log('Session data imported successfully');
+                    } else {
+                        console.error('Failed to import session data');
+                    }
+                } else {
+                    console.log('No file data in response');
+                }
+            } else {
+                const errorText = await response.text();
+                console.error('Get next session failed:', response.status, errorText);
+                alert(`Failed to get next session: ${response.status} - ${errorText}`);
+            }
+        } catch (error) {
+            console.error('Error getting next session:', error);
+            alert('Error getting next session. Please check the console for details.');
+        }
+    };
+
     return (
-        <div className="bg-white rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-4">Import/Export</h2>
+        <div className="p-4 bg-white rounded-lg shadow-md">
+            {/* Session Title */}
+            <div className="mb-4 text-center">
+                <h2 className="text-lg font-semibold text-gray-800">
+                    {currentSessionId ? `Session: ${currentSessionId}` : 'No Active Session'}
+                </h2>
+            </div>
 
             <div className="space-y-3">
                 <button
@@ -364,6 +455,30 @@ const ImportExportTool: React.FC = () => {
                     onClick={handleExport}
                 >
                     Export Data
+                </button>
+
+                <button
+                    className={cn(
+                        classNames.button.base,
+                        classNames.button.primary,
+                        classNames.button.sizes.md,
+                        classNames.button.fullWidth
+                    )}
+                    onClick={handleUpdateDB}
+                >
+                    Update DB
+                </button>
+
+                <button
+                    className={cn(
+                        classNames.button.base,
+                        classNames.button.secondary,
+                        classNames.button.sizes.md,
+                        classNames.button.fullWidth
+                    )}
+                    onClick={handleGetNextSession}
+                >
+                    Get Next Session
                 </button>
 
                 <button

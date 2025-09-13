@@ -4,7 +4,7 @@ import type { Point } from "../../../types";
 // Calculate the area of a polygon
 export const calculatePolygonArea = (points): number => {
     if (points.length < 3) return 0;
-
+//TODO: we need to use the new value for the real_area. or not allow to edit the area, just walls
     let area = 0;
 
     for (let i = 0; i < points.length; i++) {

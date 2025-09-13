@@ -203,6 +203,8 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
             const newShape: GeometricShape = {
                 ...shape,
                 id: shapeId,
+                // Ensure entity_type is set to 'new_object_entity_type' for new objects
+                entity_type: shape.entity_type || 'new_object_entity_type',
             };
 
             const updatedEntity = {
@@ -556,6 +558,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     newShape = {
                         ...polygonShape,
                         id: newShapeId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
                         points: polygonShape.points.map(point => ({
                             x: point.x + offset.x,
                             y: point.y + offset.y
@@ -569,6 +572,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     newShape = {
                         ...lineShape,
                         id: newShapeId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
                         points: lineShape.points.map(point => ({
                             x: point.x + offset.x,
                             y: point.y + offset.y
@@ -582,6 +586,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     newShape = {
                         ...pointShape,
                         id: newShapeId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
                         point: {
                             x: pointShape.point.x + offset.x,
                             y: pointShape.point.y + offset.y
@@ -596,6 +601,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     newShape = {
                         ...shape,
                         id: newShapeId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
                         center: {
                             x: shape.center.x + offset.x,
                             y: shape.center.y + offset.y
@@ -608,6 +614,7 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
                     newShape = {
                         ...shape,
                         id: newShapeId,
+                        entity_type: 'new_object_entity_type', // Set entity_type for new objects
                         position: {
                             x: shape.position.x + offset.x,
                             y: shape.position.y + offset.y
@@ -1031,11 +1038,11 @@ export const editorReducer = (state: EditorState, action: EditorAction): EditorS
 
             for (const [shapeId, shape] of Object.entries(fromEntity.shapes)) {
                 if (shapeIds.includes(shapeId)) {
-                    // Update entityType when moving
+                    // Update entity_type when moving
                     shapesToMove[shapeId] = {
                         center: undefined, points: [], radius: 0,
                         ...shape,
-                        entityType: toEntityId
+                        entity_type: toEntityId
                     };
                 } else {
                     remainingShapes[shapeId] = shape;
